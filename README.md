@@ -47,26 +47,23 @@ Omezení, o kterých je dobré vědět:
 - Hodiny zařízení se berou doslova. Telefon s hodinami o den napřed vyhraje každý spor o úpravu.
 - Dvě zařízení, která uloží změnu ve stejné vteřině, se mohou na chvíli přepsat; při další synchronizaci se položky slučují znovu a nic se neztratí.
 
-## Nastavení přihlášení přes Google (jednorázově)
+## Přihlášení přes Google: jak je nastavené
 
-Přihlášení je v appce schované, dokud v `app.js` v objektu `GCFG` zůstává `__GOOGLE_CLIENT_ID__`.
-Client ID je veřejný údaj, ne tajný klíč, a patří přímo do kódu.
+Je hotové a běží na vlastním projektu `budgetovka` v Google Cloud Console (účet kudlicka.vojtech2002@gmail.com):
 
-1. V [Google Cloud Console](https://console.cloud.google.com/) vyber nebo vytvoř projekt.
-2. **APIs & Services → Library**: najdi **Google Drive API** a zapni ji.
-3. **OAuth consent screen** (nově **Google Auth Platform**): název Budgetovka, tvůj e-mail jako kontakt, typ **External**.
-   V **Data Access** přidej oprávnění `.../auth/drive.file` a `.../auth/userinfo.email`.
-   Aplikaci pak **publikuj** (Publish app). Obě oprávnění jsou nenáročná, ověření od Googlu nechtějí. V režimu Testing
-   by ses musel přihlašovat znovu každých sedm dní.
-4. **Credentials → Create credentials → OAuth client ID → Web application**:
-   - Authorized JavaScript origins: `https://kudla2002.github.io`
-   - Authorized redirect URIs: `https://kudla2002.github.io/PersonalFinance/` (s lomítkem na konci)
-5. Zkopíruj Client ID do `GCFG.clientId` v `app.js`, ulož a pushni.
+- zapnuté **Google Drive API**,
+- **Google Auth Platform**: externí aplikace Budgetovka, publikovaná (*In production*), oprávnění `drive.file`
+  a `userinfo.email`. Obě jsou nenáročná, ověření od Googlu nechtějí. Bez publikace by přihlášení po sedmi dnech vypršelo,
+- stránky pro souhlas: domovská stránka a [zásady soukromí](privacy.html) (Google je k publikaci vyžaduje), doména `kudla2002.github.io`,
+- **OAuth klient** typu Web: origin `https://kudla2002.github.io`, redirect URI `https://kudla2002.github.io/PersonalFinance/`
+  (s lomítkem na konci). Client ID je veřejný údaj a je v `GCFG.clientId` v `app.js`.
 
-Pro vývoj na vlastním počítači přidej ještě `http://localhost:8000/` mezi redirect URI.
+Při změně adresy appky (jiný název repa, vlastní doména) uprav origin a redirect URI v klientovi a přidej novou doménu
+v **Branding → Authorized domains**, jinak přihlášení skončí chybou `redirect_uri_mismatch`.
+Pro vývoj na vlastním počítači přidej do klienta ještě `http://localhost:8000/` mezi redirect URI.
 
-Nepoužívej stejný Client ID jako pro jiné appky s daty (třeba pipeline). Oprávnění `drive.file` se
-řídí podle Client ID, takže sdílený klient by oběma appkám otevřel soubory té druhé.
+Klient je záměrně oddělený od ostatních appek. Oprávnění `drive.file` se váže na Client ID, takže sdílený klient by
+dvěma appkám otevřel soubory té druhé. Client secret se nepoužívá, appka ho nepotřebuje a nikde není.
 
 ## Formát dat
 
@@ -93,6 +90,7 @@ Při přidání kategorie zvyš `SCHEMA`, ať starší verze appky nepřepíše 
 | `index.html` | struktura stránky a okna |
 | `styles.css` | vzhled, barvy jako proměnné na začátku, světlé i tmavé |
 | `app.js` | data, výpočty, vykreslení, přihlášení a synchronizace |
+| `privacy.html` | zásady ochrany soukromí (odkaz z okna Data a z Google Cloud) |
 | `sw.js` | offline režim; při změně seznamu souborů zvyš `CACHE` |
 
 Nasazení je přes GitHub Pages z větve `main`, změna je hotová po pushi.

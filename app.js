@@ -4,10 +4,10 @@
 (() => {
   'use strict';
 
-  /* Google přihlášení. Client ID je veřejný údaj (ne tajný klíč). Dokud je tu zástupný text,
-     přihlášení je v appce skryté. Postup nastavení je v README. */
+  /* Google přihlášení. Client ID je veřejný údaj (ne tajný klíč). Když tu zůstane zástupný text
+     __GOOGLE_CLIENT_ID__, přihlášení je v appce skryté. Postup nastavení je v README. */
   const GCFG = {
-    clientId: '__GOOGLE_CLIENT_ID__',
+    clientId: '54571547764-d33i5181dd5cbkinff42o1gukl2v95ii.apps.googleusercontent.com',
     fileName: 'Budgetovka – data.json',
     // drive.file: appka vidí jen soubor, který sama vytvořila, ne zbytek Disku
     scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
