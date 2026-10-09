@@ -781,6 +781,9 @@ h2 { font-size: var(--fs-l); font-weight: 600; letter-spacing: -.01em; }
 .gbox-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .gbox-actions:empty, .gbox-actions:not(:has(.btn:not([hidden]))) { display: none; }
 .gbox-actions .btn:disabled { opacity: .5; cursor: default; }
+.gbox p.gbox-link { margin-top: 10px; font-size: var(--fs-xs, .75rem); }
+.gbox-link a { color: var(--ink-3); text-underline-offset: 2px; }
+.gbox-link a:hover { color: var(--ink); }
 .note { color: var(--ink-2); max-width: 52ch; }
 .data-actions { display: flex; flex-direction: column; margin-top: 12px; }
 .data-actions li {

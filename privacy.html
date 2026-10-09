@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Budgetovka: zásady ochrany soukromí</title>
+<meta name="robots" content="noindex">
+<style>
+  :root { color-scheme: light dark; --bg:#F4F5F8; --ink:#12161F; --ink-2:#4A5365; --line:#E1E4EB; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0C0F15; --ink:#EEF0F5; --ink-2:#B5BCC9; --line:#232A36; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 48px 20px 72px; }
+  h1 { font-size: 26px; line-height: 1.2; margin: 0 0 6px; }
+  h2 { font-size: 17px; margin: 32px 0 6px; }
+  p, li { color: var(--ink-2); margin: 0 0 10px; }
+  ul { padding-left: 20px; margin: 0 0 10px; }
+  a { color: var(--ink); }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 40px 0 24px; }
+  .meta { color: var(--ink-2); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <p class="meta"><a href="./">← Budgetovka</a></p>
+  <h1>Zásady ochrany soukromí</h1>
+  <p class="meta">Poslední změna: 10. října 2026</p>
+
+  <h2>Co appka je</h2>
+  <p>Budgetovka je osobní rozpočet, který běží celý ve tvém prohlížeči. Nemá vlastní server ani databázi. Provozovatel appky nikdy žádná tvoje data nevidí a neukládá.</p>
+
+  <h2>Bez přihlášení</h2>
+  <p>Příjmy, výdaje a poznámky se ukládají jen do úložiště tvého prohlížeče (<code>localStorage</code>). Nikam se neodesílají.</p>
+
+  <h2>Po přihlášení přes Google</h2>
+  <p>Appka požádá o dvě oprávnění:</p>
+  <ul>
+    <li><strong>E-mail účtu</strong> (<code>userinfo.email</code>): zobrazí se v appce, ať víš, který účet je přihlášený. Nikam se neukládá ani neodesílá.</li>
+    <li><strong>Soubory vytvořené appkou</strong> (<code>drive.file</code>): appka vytvoří a aktualizuje jediný soubor <em>Budgetovka – data.json</em> na tvém Google Disku. K ostatním souborům na Disku přístup nemá.</li>
+  </ul>
+  <p>Data putují přímo mezi tvým prohlížečem a Googlem. Přihlašovací token se uchovává v <code>localStorage</code> prohlížeče a po hodině vyprší.</p>
+
+  <h2>Sdílení a využití dat</h2>
+  <p>Data nejsou sdílena s třetími stranami, nepoužívají se pro reklamu ani analytiku a appka neobsahuje žádné sledovací nástroje. Využití informací získaných z Google API odpovídá <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, včetně požadavků na omezené použití.</p>
+
+  <h2>Smazání dat</h2>
+  <ul>
+    <li>Tlačítkem <em>Odhlásit</em> v appce se data z daného zařízení smažou.</li>
+    <li>Soubor <em>Budgetovka – data.json</em> můžeš kdykoli smazat ve svém Google Disku.</li>
+    <li>Přístup appky zrušíš na <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
+  </ul>
+
+  <h2>Písmo</h2>
+  <p>Appka načítá písmo Manrope z Google Fonts, takže Google při načtení stránky vidí tvoji IP adresu a prohlížeč, jako u každé stránky s Google Fonts.</p>
+
+  <hr>
+  <p class="meta">Kontakt: kudlicka.vojtech2002@gmail.com</p>
+
+  <h2 lang="en">In English</h2>
+  <p lang="en">Budgetovka is a client-side personal budget app with no backend. Without signing in, data stays in your browser's localStorage. If you sign in with Google, the app requests your account email (display only, not stored or transmitted) and the <code>drive.file</code> scope to create and update a single file, "Budgetovka – data.json", in your Google Drive. Data goes directly between your browser and Google. It is not shared with third parties, used for advertising, or analyzed. Use of information received from Google APIs adheres to the Google API Services User Data Policy, including the Limited Use requirements. Sign out in the app to remove local data, delete the file in Drive, or revoke access at myaccount.google.com/permissions.</p>
+</main>
+</body>
+</html>
