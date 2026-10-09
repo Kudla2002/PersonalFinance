@@ -1,6 +1,6 @@
 /* Offline režim. Soubory appky: nejdřív síť (změny jsou hned vidět), při výpadku cache.
    Písmo z Google Fonts: cache, aktualizace na pozadí. Verzi cache zvyš při změně seznamu SHELL. */
-const CACHE = 'budgetovka-v1';
+const CACHE = 'budgetovka-v2';
 const SHELL = [
   './',
   'index.html',

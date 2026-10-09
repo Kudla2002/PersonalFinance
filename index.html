@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Budgetovka</title>
-<meta name="description" content="Osobní rozpočet: měsíční příjmy, výdaje a spoření podle kategorií. Data zůstávají jen ve tvém prohlížeči.">
+<meta name="description" content="Osobní rozpočet: měsíční příjmy, výdaje a spoření podle kategorií. Data zůstávají ve tvém prohlížeči, volitelně i na tvém Google Disku.">
 <meta name="theme-color" content="#F4F5F8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0C0F15" media="(prefers-color-scheme: dark)">
 <link rel="manifest" href="manifest.webmanifest">
@@ -37,6 +37,9 @@
       </div>
     </div>
     <div class="actions">
+      <button type="button" class="sync" id="syncBtn" data-s="out" hidden>
+        <i class="sdot" aria-hidden="true"></i><span id="syncTxt">Přihlásit přes Google</span>
+      </button>
       <button type="button" class="btn btn-ghost" id="dataBtn">Data</button>
       <button type="button" class="btn btn-primary" id="addBtn">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
@@ -60,7 +63,7 @@
       <span class="hatch" style="flex:24"></span>
     </div>
     <h2 id="emptyTitle">Začni první položkou</h2>
-    <p>Příjmy, výdaje a spoření se tu sečtou po měsících a rozdělí do kategorií. Data zůstávají jen v tomto prohlížeči.</p>
+    <p id="emptyText">Příjmy, výdaje a spoření se tu sečtou po měsících a rozdělí do kategorií. Data zůstávají jen v tomto prohlížeči.</p>
     <div class="empty-actions">
       <button type="button" class="btn btn-primary" id="emptyAdd">Přidat první položku</button>
       <button type="button" class="btn btn-ghost" id="emptyDemo">Vyzkoušet na ukázkových datech</button>
@@ -211,7 +214,16 @@
       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     </button>
   </header>
-  <p class="note">Všechno je uložené jen v tomhle prohlížeči na tomhle zařízení. Občas si stáhni zálohu, ať o data nepřijdeš při vymazání prohlížeče nebo výměně telefonu.</p>
+  <section class="gbox" aria-labelledby="gTitle">
+    <h3 id="gTitle">Google Disk</h3>
+    <p id="gText"></p>
+    <div class="gbox-actions">
+      <button type="button" class="btn btn-primary" id="gLogin" hidden>Přihlásit přes Google</button>
+      <button type="button" class="btn btn-ghost" id="gSyncNow" hidden>Synchronizovat teď</button>
+      <button type="button" class="btn btn-danger" id="gLogout" hidden>Odhlásit</button>
+    </div>
+  </section>
+  <p class="note" id="dataNote">Všechno je uložené jen v tomhle prohlížeči na tomhle zařízení. Občas si stáhni zálohu, ať o data nepřijdeš při vymazání prohlížeče nebo výměně telefonu.</p>
   <ul class="data-actions">
     <li>
       <button type="button" class="btn btn-ghost" id="expJson">Stáhnout zálohu</button>
@@ -232,7 +244,7 @@
     </li>
     <li>
       <button type="button" class="btn btn-danger" id="wipeBtn">Smazat všechna data</button>
-      <span>Nejdřív si stáhni zálohu.</span>
+      <span id="wipeNote">Nejdřív si stáhni zálohu.</span>
     </li>
   </ul>
   <div class="data-msg" id="dataMsg" role="status" aria-live="polite"></div>
