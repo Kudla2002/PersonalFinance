@@ -1,13 +1,16 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <clipPath id="bar"><rect x="38" y="208" width="436" height="96" rx="24"/></clipPath>
-  </defs>
-  <rect width="512" height="512" rx="112" fill="#12161F"/>
-  <g clip-path="url(#bar)">
-    <rect x="38" y="208" width="128" height="96" fill="#3987E5"/>
-    <rect x="174" y="208" width="84" height="96" fill="#D95926"/>
-    <rect x="266" y="208" width="48" height="96" fill="#199E70"/>
-    <rect x="322" y="208" width="34" height="96" fill="#EDEFF4"/>
-    <rect x="364" y="208" width="110" height="96" fill="#FFFFFF" fill-opacity=".18"/>
-  </g>
-</svg>
+    <radialGradient id="glow" cx="22%" cy="12%" r="75%">
+      <stop offset="0" stop-color="#3ddc4f" stop-opacity=".75"/>
+      <stop offset=".45" stop-color="#1f7a2c" stop-opacity=".35"/>
+      <stop offset="1" stop-color="#0f1412" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a201d"/><stop offset="1" stop-color="#0d100f"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6cf06a"/><stop offset="1" stop-color="#2fb83a"/></linearGradient>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity=".55"/></filter>
+  </defs><rect width="512" height="512" rx="112" fill="url(#bg)"/><rect width="512" height="512" rx="112" fill="url(#glow)"/><g transform="translate(0.0 0.0) scale(1.0)" filter="url(#sh)">
+    <rect x="106" y="106" width="300" height="300" rx="70" fill="url(#rim)"/>
+    <rect x="126" y="126" width="260" height="260" rx="54" fill="#141716"/>
+    <path d="M256 128 V392" stroke="#fff" stroke-width="30" stroke-linecap="round" transform="translate(0 0) scale(1)" opacity="1" style="transform-origin:256px 256px;transform:scale(.72)"/>
+    <path d="M322 196 C306 170 280 160 254 160 C218 160 192 180 192 210 C192 240 216 252 256 262 C298 272 324 286 324 318 C324 348 298 366 258 366 C226 366 200 352 186 328" fill="none" stroke="#fff" stroke-width="38" stroke-linecap="round" stroke-linejoin="round" style="transform-origin:256px 263px;transform:scale(.72)"/>
+  </g></svg>

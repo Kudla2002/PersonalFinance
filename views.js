@@ -160,7 +160,7 @@
   }
 
   function emptyState() {
-    return head('Budgetovka', 'Příjmy, výdaje a spoření po měsících.')
+    return head('Finance', 'Příjmy, výdaje a spoření po měsících.')
       + `<div class="panel" style="max-width:560px"><h2>Zatím tu nic není</h2>
       <p class="cap" style="margin-top:6px">Nahraj výpis z banky (CSV) nebo zálohu (JSON), klidně jen přetažením souboru do okna. Appka pohyby sama roztřídí do kategorií jako hospoda, kavárna, gym nebo rozvoz. Zbytek zařadíš jedním klepnutím a appka si to pamatuje. Data zůstávají jen v tomto prohlížeči, volitelně i na tvém Google Disku.</p>
       <div class="chips">
@@ -707,12 +707,13 @@
     const rows = Object.keys(sums).sort((a, b) => sums[b] - sums[a]);
     if (!rows.length) return '';
     const withData = series.filter(s => s.n > 0).length || 1;
-    return `<div class="tblwrap"><table><thead><tr><th>Kategorie</th>${series.map(s => `<th>${fmtMonthShort(s.ym)}</th>`).join('')}<th>Ø měs.</th></tr></thead><tbody>${rows.map(c => {
+    const yms = series.map(s => s.ym).join(',');
+    return `<div class="tblwrap"><table class="heat"><thead><tr><th>Kategorie</th>${series.map(s => `<th><button type="button" data-act="month-go" data-ym="${s.ym}" title="Otevřít ${fmtMonth(s.ym)}">${fmtMonthShort(s.ym)}</button></th>`).join('')}<th>Ø měs.</th></tr></thead><tbody>${rows.map(c => {
       const mx = Math.max(...series.map(s => s.byCat[c] || 0), 1);
-      return `<tr><td>${esc(CAT[c].name)}</td>${series.map(s => {
+      return `<tr><td><button type="button" class="hcat" data-act="cell" data-cat="${c}" data-yms="${yms}">${esc(CAT[c].name)}</button></td>${series.map(s => {
         const v = s.byCat[c] || 0;
-        return `<td class="hm" style="--h:${(v / mx).toFixed(3)}"><span>${v ? numStr(Math.round(v / 100) * 100) : ''}</span></td>`;
-      }).join('')}<td class="tot">${numStr(Math.round(sums[c] / withData / 100) * 100)}</td></tr>`;
+        return `<td class="hm" style="--h:${(v / mx).toFixed(3)}">${v ? `<button type="button" data-act="cell" data-cat="${c}" data-yms="${s.ym}" aria-label="${esc(CAT[c].name)}, ${fmtMonth(s.ym)}: ${moneyRound(v)}">${numStr(Math.round(v / 100) * 100)}</button>` : ''}</td>`;
+      }).join('')}<td class="tot"><button type="button" data-act="cell" data-cat="${c}" data-yms="${yms}">${numStr(Math.round(sums[c] / withData / 100) * 100)}</button></td></tr>`;
     }).join('')}</tbody></table></div>`;
   }
 
@@ -737,7 +738,7 @@
       <div class="panel"><h2>Míra úspor</h2><div class="cap">Kolik procent příjmů zbylo nebo se odložilo.</div>${rateChart(series)}</div></div>`;
     h += `<div class="hero"><div class="panel" style="grid-column:1/-1"><h2>Výdaje podle skupin</h2><div class="cap">Z čeho se skládají výdaje (bez spoření).</div>${stackChart(series)}</div></div>`;
     const ht = heatTable(series);
-    if (ht) h += `<div class="section"><div class="sechead">Kategorie po měsících</div><div class="group">${ht}</div><div class="secfoot">Sytost barvy je v rámci řádku: tmavší měsíc = víc než v ostatních měsících té kategorie.</div></div>`;
+    if (ht) h += `<div class="section"><div class="sechead">Kategorie po měsících</div><div class="group">${ht}</div><div class="secfoot">Klepni na číslo a uvidíš, za co přesně to bylo. Sytost barvy je v rámci řádku: tmavší = víc než v ostatních měsících.</div></div>`;
     return h;
   }
 
@@ -912,6 +913,8 @@
         if (r) r.scrollIntoView({ behavior: 'smooth', block: 'center' });
         break;
       }
+      case 'cell': { const d = DLG(); if (d.openCell) d.openCell(el.dataset.cat, el.dataset.yms.split(',')); break; }
+      case 'month-go': S.tab = 'home'; S.openCat = null; setMonth(el.dataset.ym); window.scrollTo(0, 0); break;
       case 'month-last': if (D.yms.length) setMonth(D.yms[D.yms.length - 1]); break;
       case 'pick-file': { const d = DLG(); if (d.pickFile) d.pickFile(); break; }
       case 'go':

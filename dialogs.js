@@ -11,7 +11,7 @@
 
   const dlgs = {
     entry: $('#entryDlg'), data: $('#dataDlg'), imp: $('#importDlg'), merch: $('#merchDlg'),
-    triage: $('#triageDlg'), rules: $('#rulesDlg'), limit: $('#limitDlg'),
+    triage: $('#triageDlg'), rules: $('#rulesDlg'), limit: $('#limitDlg'), cell: $('#cellDlg'),
   };
   Object.values(dlgs).forEach(K.wireDlg);
 
@@ -445,6 +445,56 @@
     open(dlg);
   }
 
+  /* ========== detail buňky v Trendech: kategorie × měsíc(e) ========== */
+
+  function openCell(cat, yms) {
+    const dlg = dlgs.cell;
+    const c = CAT[cat];
+    if (!c) return;
+    const set = new Set(yms);
+    const items = V.sorted(BG.tx.filter(t => t.cat === cat && set.has(t.date.slice(0, 7))));
+    const sum = items.reduce((a, t) => a + t.amount, 0);
+    const one = yms.length === 1;
+    const period = one ? fmtMonth(yms[0]) : `${fmtMonth(yms[0])} – ${fmtMonth(yms[yms.length - 1])}`;
+    // srovnání s průměrem ostatních měsíců v okně
+    const D = V.D;
+    let cmp = '';
+    if (one) {
+      const prev = An.avgByCat(BG.tx, yms[0], 6);
+      const avg = prev.avg[cat] || 0;
+      if (prev.months && avg > 0) {
+        const d = Math.round((sum - avg) / avg * 100);
+        cmp = `${d >= 0 ? '+' : MINUS}${Math.abs(d)} % proti průměru (${moneyRound(avg)})`;
+      }
+    } else {
+      const withData = yms.filter(m => (D.mm[m] || []).length).length || 1;
+      cmp = `průměr ${moneyRound(sum / withData)} měsíčně`;
+    }
+    const ms = An.merchants(items, c.kind).slice(0, 6);
+    dlg.innerHTML = K.sheetHTML({
+      title: esc(c.name), left: 'Zavřít',
+      body: `<div class="sum"><div class="k">${esc(period)}</div><div class="v">${money(sum)}</div><div class="h">${items.length} ${items.length === 1 ? 'platba' : items.length < 5 ? 'platby' : 'plateb'}${cmp ? ' · ' + cmp : ''}</div></div>
+        ${ms.length > 1 ? `<div><div class="sechead">Kde nejvíc</div><div class="group">${ms.map(m => `<button type="button" class="row row-btn has-bar" data-merch="${esc(m.key)}"><div class="main"><div class="t">${esc(m.name)}</div><div class="s">${m.n}× · Ø ${moneyRound(m.avg)}</div></div><div class="end">${money(m.sum)}<small>${sum ? Math.round(m.sum / sum * 100) + ' %' : ''}</small></div><div class="bar2"><i style="width:${(m.sum / (ms[0].sum || 1) * 100).toFixed(1)}%;background:${V.catColor(cat)}"></i></div></button>`).join('')}</div></div>` : ''}
+        <div><div class="sechead">Platby</div><div class="group">${items.slice(0, 60).map(t => V.txRow(t, { date: true }).replace('data-act="edit"', 'data-edit="1"')).join('') || '<div class="empty">Nic.</div>'}
+          ${items.length > 60 ? `<div class="empty" style="padding:12px">a dalších ${items.length - 60}</div>` : ''}</div></div>
+        <button type="button" class="chipbtn" id="cShow" style="justify-self:center">Otevřít v Pohybech</button>`,
+    });
+    dlg.onclick = e => {
+      const row = e.target.closest('[data-edit]');
+      if (row) { const t = BG.tx.find(x => x.id === row.dataset.id); close(dlg); if (t) setTimeout(() => openEntry(t), 120); return; }
+      const mr = e.target.closest('[data-merch]');
+      if (mr) { close(dlg); setTimeout(() => openMerch(mr.dataset.merch, c.kind === 'in'), 120); }
+    };
+    $('#cShow', dlg).addEventListener('click', () => {
+      const S = V.S;
+      S.tab = 'moves'; S.sub = 'list'; S.kind = 'all'; S.cat = cat; S.q = ''; S.shown = 200;
+      if (one) { S.all = false; S.ym = yms[0]; } else S.all = true;
+      close(dlg);
+      V.render({ top: true });
+    });
+    open(dlg);
+  }
+
   /* ========== nezařazené ========== */
 
   function openTriage() { renderTriage(); open(dlgs.triage); }
@@ -582,7 +632,7 @@
   BG.ui.closeData = () => close(dlgs.data);
   BG.ui.dataMsg = t => { const m = $('#dataMsg'); if (m) m.textContent = t; };
   BG.ui.sync = () => {};
-  window.BGDlg = { openEntry, openMerch, openTriage, openRules, openLimit, suggestLimits, openData, pickFile, handleFile };
+  window.BGDlg = { openCell, openEntry, openMerch, openTriage, openRules, openLimit, suggestLimits, openData, pickFile, handleFile };
 
   BG.boot();
 })();

@@ -1,4 +1,4 @@
-# Budgetovka
+# Finance (dříve Budgetovka)
 
 Osobní rozpočet na jedné stránce: měsíční příjmy, výdaje a spoření rozdělené do kategorií.
 Bez serveru, bez buildu. Data zůstávají ve tvém prohlížeči, volitelně i na tvém Google Disku.

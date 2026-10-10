@@ -1,14 +1,14 @@
 {
-  "name": "Budgetovka",
-  "short_name": "Budgetovka",
+  "name": "Finance",
+  "short_name": "Finance",
   "description": "Osobní rozpočet: příjmy, výdaje a spoření po měsících, kategorie, obchodníci a pravidelné platby.",
   "lang": "cs",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#F2F2F7",
-  "theme_color": "#F2F2F7",
+  "background_color": "#0D100F",
+  "theme_color": "#0D100F",
   "icons": [
     { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

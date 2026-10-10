@@ -469,3 +469,14 @@ body.dropping::after { content: "Pusť soubor: výpis (CSV) nebo zálohu (JSON)"
   border: 3px dashed var(--tint); border-radius: 22px; background: color-mix(in srgb, var(--bg) 88%, transparent); color: var(--tint); font-size: 20px; font-weight: 600; pointer-events: none; }
 .mob-only { display: none; }
 @media (max-width: 860px) { .hero-pace { display: none; } .mob-only { display: block; } }
+
+/* Trendy: každá buňka jde otevřít */
+table.heat button { font: inherit; color: inherit; width: 100%; text-align: inherit; padding: 0; cursor: pointer; position: relative; font-variant-numeric: tabular-nums; }
+table.heat td.hm button { text-align: right; }
+table.heat td.hm:hover::before { opacity: calc(var(--h, 0) * .55 + .18); outline: 1.5px solid var(--orange); }
+table.heat td.hm button:focus-visible { outline: 2px solid var(--tint); outline-offset: 2px; border-radius: 4px; }
+table.heat .hcat { text-align: left; }
+table.heat .hcat:hover, table.heat th button:hover, table.heat td.tot button:hover { color: var(--tint); }
+table.heat th button { color: inherit; font-weight: inherit; text-transform: inherit; letter-spacing: inherit; text-align: inherit; }
+table.heat td.hm, table.heat td.tot, table.heat td:first-child { padding: 0; }
+table.heat td.hm button, table.heat td.tot button, table.heat .hcat { display: block; padding: 9px 12px; min-height: 36px; }

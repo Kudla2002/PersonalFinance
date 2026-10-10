@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Budgetovka</title>
+<title>Finance</title>
 <meta name="description" content="Osobní rozpočet: příjmy, výdaje a spoření po měsících, kategorie, obchodníci, pravidelné platby a import výpisu. Data zůstávají ve tvém prohlížeči, volitelně i na tvém Google Disku.">
 <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Budgetovka">
+<meta name="apple-mobile-web-app-title" content="Finance">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -21,7 +21,7 @@
 
 <header class="bar">
   <div class="bar-in">
-    <div class="brand"><img src="icons/icon-192.png" alt="" width="26" height="26"><span>Budgetovka</span></div>
+    <div class="brand"><img src="icons/icon-192.png" alt="" width="26" height="26"><span>Finance</span></div>
     <nav class="seg" id="segTop" role="tablist" aria-label="Sekce"></nav>
     <span class="spacer"></span>
     <label class="search" id="searchBox" hidden>
@@ -49,6 +49,7 @@
 <dialog id="triageDlg" aria-label="Nezařazené pohyby"></dialog>
 <dialog id="rulesDlg" aria-label="Pravidla zařazení"></dialog>
 <dialog id="limitDlg" aria-label="Limit"></dialog>
+<dialog id="cellDlg" aria-label="Detail kategorie"></dialog>
 
 <input type="file" id="fileCsv" class="kfile" accept=".csv,.tsv,.txt,.json,text/csv,text/plain,application/json" tabindex="-1" aria-hidden="true">
 <input type="file" id="fileJson" class="kfile" accept=".json,application/json" tabindex="-1" aria-hidden="true">
@@ -56,7 +57,7 @@
 <div id="toast" role="status" hidden></div>
 <div id="tip" role="tooltip" hidden></div>
 
-<noscript><p style="padding:24px;font-family:sans-serif">Budgetovka potřebuje zapnutý JavaScript.</p></noscript>
+<noscript><p style="padding:24px;font-family:sans-serif">Finance potřebuje zapnutý JavaScript.</p></noscript>
 
 <script src="rules.js"></script>
 <script src="cats.js"></script>

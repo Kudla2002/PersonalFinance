@@ -1,6 +1,6 @@
 /* Offline režim. Soubory appky: nejdřív síť (změny jsou hned vidět), při výpadku cache.
    Verzi cache zvyš při změně seznamu SHELL. Cizí adresy (Google přihlášení, Disk) se nikdy neukládají. */
-const CACHE = 'budgetovka-v5';
+const CACHE = 'finance-v6';
 const SHELL = [
   './',
   'index.html',
