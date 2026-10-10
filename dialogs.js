@@ -236,6 +236,9 @@
         BG.snap();
         const r = BG.mergeBackup(String(fr.result));
         close(dlgs.data);
+        // ukaž nejnovější měsíc, ve kterém jsou data
+        const last = BG.tx.reduce((m, t) => (t.date > m ? t.date : m), '');
+        if (last && window.BGV) { const S = window.BGV.S; S.all = false; S.ym = last.slice(0, 7); S.tab = 'home'; window.BGV.render({ top: true }); }
         BG.toast(r.added > 0 ? `Záloha sloučena, přibylo ${r.added} pohybů` : 'Záloha sloučena, nic nového v ní nebylo', r.added > 0 ? { label: 'Vrátit', run: BG.undo } : undefined);
       } catch (err) {
         BG.toast(err.message || 'Zálohu se nepodařilo přečíst.');

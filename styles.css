@@ -2,6 +2,7 @@
    Barvy kategorií se odvozují v views.js z barev skupin (--g-<skupina>, --c-<kategorie>). */
 
 :root {
+  --veil: rgba(242,242,247,.80);
   --bg: #F2F2F7; --bg2: #FFFFFF; --bg3: #F2F2F7; --fill: rgba(120,120,128,.12); --fill2: rgba(120,120,128,.08);
   --label: #000000; --label2: rgba(60,60,67,.6); --label3: rgba(60,60,67,.3); --sep: rgba(60,60,67,.18);
   --tint: #007AFF; --tint-soft: rgba(0,122,255,.12); --green: #34C759; --green-soft: rgba(52,199,89,.14);
@@ -16,6 +17,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
+    --veil: rgba(0,0,0,.80);
     --bg: #000000; --bg2: #1C1C1E; --bg3: #2C2C2E; --fill: rgba(120,120,128,.24); --fill2: rgba(120,120,128,.16);
     --label: #FFFFFF; --label2: rgba(235,235,245,.6); --label3: rgba(235,235,245,.3); --sep: rgba(84,84,88,.6);
     --tint: #0A84FF; --tint-soft: rgba(10,132,255,.2); --green: #30D158; --green-soft: rgba(48,209,88,.18);
@@ -26,6 +28,7 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
+  --veil: rgba(0,0,0,.80);
   --bg: #000000; --bg2: #1C1C1E; --bg3: #2C2C2E; --fill: rgba(120,120,128,.24); --fill2: rgba(120,120,128,.16);
   --label: #FFFFFF; --label2: rgba(235,235,245,.6); --label3: rgba(235,235,245,.3); --sep: rgba(84,84,88,.6);
   --tint: #0A84FF; --tint-soft: rgba(10,132,255,.2); --green: #30D158; --green-soft: rgba(48,209,88,.18);
@@ -36,7 +39,12 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html, body { background: var(--bg); overscroll-behavior-x: none; }
+html { background: var(--bg); overscroll-behavior-x: none; }
+body { background: transparent; overscroll-behavior-x: none; }
+/* fotka v pozadí: pevná vrstva pod obsahem, přes ni závoj kvůli čitelnosti (karty zůstávají plné) */
+body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(var(--veil), var(--veil)), url("bg.jpg") center / cover no-repeat; }
+@media print { body::before { display: none; } }
 body { margin: 0; color: var(--label); font-family: var(--font); font-size: 15px; line-height: 1.35; -webkit-font-smoothing: antialiased; letter-spacing: -.01em; -webkit-text-size-adjust: 100%; }
 .num { font-variant-numeric: tabular-nums; }
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; letter-spacing: inherit; -webkit-tap-highlight-color: transparent; }
@@ -131,6 +139,20 @@ svg { flex: none; }
 .banner { background: var(--orange-soft); border-radius: var(--r); padding: 12px 16px; margin-bottom: 22px; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; font-size: 14px; }
 .banner button { color: var(--tint); font-weight: 600; }
 .banner b { font-variant-numeric: tabular-nums; }
+.banner.demo { background: var(--yellow-soft, rgba(255,204,0,.18)); box-shadow: inset 0 0 0 1px rgba(255,159,10,.55); }
+.banner .bbtns { display: flex; gap: 14px; flex-wrap: wrap; }
+.banner .ghost { color: var(--label2); font-weight: 500; }
+
+/* zbytečné výdaje */
+.leaks .leak { position: relative; }
+.leaks .leak + .leak { border-top: .5px solid var(--sep); }
+.leaks .leak::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--sev); }
+.leaks .leak .row { border: 0; }
+.leaks .leak.off { opacity: .5; }
+.leaks .s.multi { white-space: normal; line-height: 1.35; }
+.leaks .lktip { font-size: 13px; color: var(--label); background: var(--fill2); border-radius: 10px; padding: 8px 10px; margin-top: 8px; line-height: 1.4; }
+.leakact { padding: 0 16px 12px 64px; }
+.leakact button { color: var(--tint); font-size: 13px; font-weight: 500; }
 
 .hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 26px; }
 .panel { background: var(--bg2); border-radius: var(--r-lg); padding: 18px; box-shadow: var(--card-shadow); min-width: 0; }

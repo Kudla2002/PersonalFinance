@@ -1,6 +1,6 @@
 /* Offline režim. Soubory appky: nejdřív síť (změny jsou hned vidět), při výpadku cache.
    Verzi cache zvyš při změně seznamu SHELL. Cizí adresy (Google přihlášení, Disk) se nikdy neukládají. */
-const CACHE = 'budgetovka-v3';
+const CACHE = 'budgetovka-v4';
 const SHELL = [
   './',
   'index.html',
@@ -18,6 +18,7 @@ const SHELL = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/apple-touch-icon.png',
+  'bg.jpg',
 ];
 
 self.addEventListener('install', event => {

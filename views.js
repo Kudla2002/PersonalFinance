@@ -66,6 +66,8 @@
       last: lastData && lastData > nowYM ? lastData : nowYM,
       lim: BG.limits(), target: BG.target(), _rec: null,
       rec() { return this._rec || (this._rec = An.recurring(tx, this.today)); },
+      _lk: null,
+      leaks() { return this._lk || (this._lk = An.leaks(tx, this.today)); },
     };
   }
 
@@ -340,6 +342,8 @@
       <div class="tile"><div class="k"><i style="background:var(--teal)"></i>Dny bez útraty</div><div class="v">${pc.p.upTo ? noSp.free + `<small> z ${pc.p.upTo}</small>` : '–'}</div><div class="h">${noSp.streak > 1 ? `nejdelší série ${noSp.streak}` : '&nbsp;'}</div></div>
     </div>`;
 
+    h += leaksSection(false);
+
     // kam to teče
     const avg = An.avgByCat(D.tx, ym, 3);
     const grpParts = GROUPS.filter(g => g.id !== 'in').map(g => ({
@@ -383,6 +387,43 @@
       h += `<div class="section"><div class="sechead">Postřehy</div><div class="group">${ins.map(i =>
         `<div class="row">${avGrpRaw(i.col, i.icon)}<div class="main"><div class="s" style="white-space:normal;color:var(--label);font-size:14px;line-height:1.4">${i.html}</div></div></div>`).join('')}</div></div>`;
     }
+    return h;
+  }
+
+
+  /* ---------- zbytečné výdaje ---------- */
+  const SEV = { high: ['var(--red)', 'Vysoké'], mid: ['var(--orange)', 'Střední'], low: ['var(--yellow)', 'Nízké'] };
+  const hiddenLeak = it => !!BG.getMeta('x:' + it.id);
+
+  function leakRow(it, opts) {
+    const [col] = SEV[it.sev];
+    const hidden = hiddenLeak(it);
+    return `<div class="leak${hidden ? ' off' : ''}" style="--sev:${col}">
+      <button type="button" class="row row-btn" data-act="go" data-tab="moves" data-cat="${it.cat}" data-all="1">${av(it.cat)}
+        <div class="main"><div class="t">${esc(it.title)}</div><div class="s multi">${esc(it.text)}</div>${opts && opts.full ? `<div class="lktip">${esc(it.tip)}</div>` : ''}</div>
+        <div class="end up">${moneyRound(it.perMonth)}<small>${moneyRound(it.perYear)} ročně</small></div></button>
+      ${opts && opts.full ? `<div class="leakact"><button type="button" data-act="leak-hide" data-id="${esc(it.id)}">${hidden ? 'Znovu upozorňovat' : 'Tohle je v pořádku, skrýt'}</button></div>` : ''}
+    </div>`;
+  }
+
+  function monthsLabel(months) {
+    if (!months.length) return '';
+    const a = fmtMonthShort(months[0]), b = fmtMonthShort(months[months.length - 1]);
+    return months.length === 1 ? a : `${a} – ${b}`;
+  }
+
+  function leaksSection(full) {
+    const L = D.leaks();
+    const vis = L.items.filter(it => !hiddenLeak(it));
+    const hid = L.items.length - vis.length;
+    if (!L.months.length) return full ? `<div class="section"><div class="sechead">Zbytečné výdaje</div><div class="group"><div class="empty">Upozornění se počítají z uzavřených měsíců. Jakmile skončí první měsíc s daty, objeví se tady.</div></div></div>` : '';
+    if (!full && !vis.length) return '';
+    const rows = full ? (S.showHidden ? L.items : vis) : vis.slice(0, 3);
+    let h = `<div class="section"><div class="itemhead"><div class="sechead">Zbytečné výdaje</div>${full ? (hid ? `<button type="button" data-act="leak-showhidden">${S.showHidden ? 'Schovat skryté' : `Skryté (${hid})`}</button>` : '') : `<button type="button" data-act="go" data-tab="plan">${vis.length > 3 ? `Všechna (${vis.length})` : 'Detail'}</button>`}</div>`;
+    if (rows.length) h += `<div class="group leaks">${rows.map(it => leakRow(it, { full })).join('')}</div>`;
+    else h += `<div class="group"><div class="empty">Nic podezřelého. Všechna upozornění máš skrytá nebo vyřešená.</div></div>`;
+    const pot = L.potential;
+    h += `<div class="secfoot">Z plateb za ${monthsLabel(L.months)}.${pot > 0 ? ` Když tyhle výdaje omezíš na polovinu, ušetříš asi <b>${moneyRound(pot)}</b> ročně.` : ''}</div></div>`;
     return h;
   }
 
@@ -671,7 +712,7 @@
     const list = D.mm[ym] || [];
     const s = sumTx(list);
     const frac = fracOf(ym);
-    let h = head('Plán', 'Limity, cíl spoření a pravidelné platby') + perbar(false);
+    let h = head('Plán', 'Zbytečné výdaje, limity, cíl spoření a pravidelné platby') + leaksSection(true) + perbar(false);
 
     // limity
     const limCats = CATS.filter(c => D.lim[c.id]).sort((a, b) => (s.byCat[b.id] || 0) / D.lim[b.id] - (s.byCat[a.id] || 0) / D.lim[a.id]);
@@ -758,6 +799,12 @@
     if (q && q.value !== S.q) q.value = S.q;
   }
 
+  /* Ukázková data musí být na první pohled poznat, jinak vypadají jako tvoje čísla. */
+  function demoBanner() {
+    if (!BG.hasDemo()) return '';
+    return `<div class="banner demo"><span><b>Ukázková data.</b> Vymyšlená čísla na vyzkoušení, ne tvoje. Nahraj svůj výpis nebo zálohu a ukázka zmizí sama.</span><span class="bbtns"><button type="button" data-act="data">Nahrát svoje data</button><button type="button" class="ghost" data-act="demo-clear">Smazat ukázku</button></span></div>`;
+  }
+
   let firstRender = true;
   function render(opts) {
     D = compute();
@@ -772,7 +819,7 @@
     const y = window.scrollY;
     renderChrome();
     const view = $('#view');
-    view.innerHTML = VIEWS[S.tab]();
+    view.innerHTML = demoBanner() + VIEWS[S.tab]();
     $$('.chartwrap[data-tips]', view).forEach(w => {
       try { K.chartTips(w, JSON.parse(w.dataset.tips)); } catch (e) { /* bez tipů */ }
     });
@@ -813,7 +860,15 @@
     const dlg = DLG();
     switch (a) {
       case 'tab': setTab(el.dataset.tab); break;
+      case 'leak-hide': {
+        const k = 'x:' + el.dataset.id;
+        BG.setMeta(k, BG.getMeta(k) ? null : 1);
+        BG.commit();
+        break;
+      }
+      case 'leak-showhidden': S.showHidden = !S.showHidden; render(); break;
       case 'go':
+        if (el.dataset.all) S.all = true;
         S.tab = el.dataset.tab;
         S.cat = el.dataset.cat || null;
         S.q = '';
@@ -844,6 +899,8 @@
       case 'limit-suggest': if (dlg.suggestLimits) dlg.suggestLimits(); break;
       case 'import': if (dlg.openData) dlg.openData(); break;
       case 'demo': BG.loadDemo(); break;
+      case 'demo-clear': BG.clearDemo(); BG.toast('Ukázka smazána', { label: 'Vrátit', run: BG.undo }); break;
+      case 'data': { const d = DLG(); if (d.openData) d.openData(); break; }
       default: break;
     }
   });

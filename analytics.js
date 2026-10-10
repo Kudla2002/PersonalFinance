@@ -211,8 +211,142 @@
     return { free, streak: best };
   }
 
+
+  /* ---------- Zbytečné výdaje ----------
+     Hodnotí poslední (nejvýš) 3 uzavřené měsíce s daty. Vrací upozornění s částkou za měsíc a za rok,
+     konkrétním tipem a seznamem pohybů, ze kterých vychází. Nic nehádá: všechno je součet skutečných plateb. */
+  const GENERIC = new Set(['restaurace', 'bistro', 'cafe', 'kavarna', 'potraviny', 'bar', 'pivnice', 'hotel', 'trafika', 'the', 'u', 'la', 'le', 'el', 'na', 'pizza', 'pizzeria', 'hospoda', 'pub', 'brno', 'praha']);
+  const brandOf = key => {
+    const first = String(key || '').split(' ')[0].split(/[.\-]/)[0];
+    return first && first.length >= 2 && !GENERIC.has(first) ? first : key;
+  };
+  const brandLabel = name => {
+    const w = String(name || '').split(' ')[0].split(/[./*]/)[0];
+    return w.length >= 2 ? (w.length <= 3 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1).toLowerCase()) : name;
+  };
+  // rodiny předplatných, které se často platí víckrát pod různými názvy
+  const SUB_FAMILY = [['Claude', /claude|anthropic/i], ['Apple', /apple/i], ['Google', /google|youtube/i], ['Spotify', /spotify/i], ['Netflix', /netflix/i], ['Microsoft', /microsoft|office 365|xbox/i], ['ChatGPT', /openai|chatgpt/i]];
+
+  const pl = (n, one, few, many) => `${n} ${n === 1 ? one : n >= 2 && n <= 4 ? few : many}`;
+  const kc = v => `${Math.round(v / 100).toLocaleString('cs-CZ')} Kč`;
+
+  function leakWindow(tx, todayISO) {
+    const nowYM = ymOf(todayISO);
+    const yms = [...new Set(tx.map(t => ymOf(t.date)))].filter(ym => ym < nowYM).sort();
+    return yms.slice(-3);
+  }
+
+  function leaks(tx, todayISO) {
+    const months = leakWindow(tx, todayISO);
+    if (!months.length) return { months, items: [], potential: 0 };
+    const nm = months.length;
+    const set = new Set(months);
+    const list = tx.filter(t => set.has(ymOf(t.date)) && kindOf(t.cat) === 'out');
+    const pm = v => Math.round(v / nm);
+    const items = [];
+    const sev = v => (v >= 300000 ? 'high' : v >= 100000 ? 'mid' : 'low');
+    const add = o => { o.id = o.id.toLowerCase().replace(/[^a-z0-9_:.\-]/g, '_').slice(0, 80); o.perYear = o.perMonth * 12; o.sev = o.sev || sev(o.perMonth); items.push(o); };
+
+    // 1) časté drobné útraty u jednoho obchodu nebo řetězce (káva, fast food, hospoda)
+    const OFTEN = { kavarna: 'Kafe s sebou z domu nebo termoska v práci. Omez to na 2× týdně a ušetříš víc než polovinu.',
+      restaurace: 'Fast food a obědy venku: připrav si jídlo na 2–3 dny dopředu a choď ven cíleně, ne ze zvyku.',
+      hospoda: 'Domluv si pevný rozpočet na večer nebo jednu hospodu týdně. Částka roste hlavně opakováním.' };
+    const groups = new Map();
+    for (const m of merchants(list.filter(t => OFTEN[t.cat]), 'out')) {
+      const b = brandOf(m.key);
+      let g = groups.get(b);
+      if (!g) { g = { keys: [], names: {}, n: 0, sum: 0, cats: {}, items: [] }; groups.set(b, g); }
+      g.keys.push(m.key); g.n += m.n; g.sum += m.sum; g.items.push(...m.items);
+      g.names[m.name] = (g.names[m.name] || 0) + m.n;
+      g.cats[m.cat] = (g.cats[m.cat] || 0) + m.n;
+    }
+    for (const [b, g] of groups) {
+      const perN = g.n / nm, avg = g.sum / g.n, perMonth = pm(g.sum);
+      if (perN < 4 || avg > 40000 || perMonth < 60000) continue;
+      const cat = Object.entries(g.cats).sort((x, y) => y[1] - x[1])[0][0];
+      const top = Object.entries(g.names).sort((x, y) => y[1] - x[1])[0][0];
+      const title = g.keys.length > 1 ? `${brandLabel(top)} (${g.keys.length} pobočky)` : top;
+      add({ id: 'often:' + b, kind: 'often', cat, title, perMonth, n: Math.round(perN), avg: Math.round(avg),
+        text: `${Math.round(perN)}× za měsíc, v průměru ${kc(avg)} za návštěvu.`, tip: OFTEN[cat], ids: g.items.map(t => t.id) });
+    }
+
+    // 2) celé kategorie, kde je drahá hlavně pohodlnost
+    const byCat = {};
+    for (const t of list) (byCat[t.cat] = byCat[t.cat] || []).push(t);
+    const rozvoz = byCat.rozvoz || [];
+    if (pm(rozvoz.reduce((a, t) => a + t.amount, 0)) >= 100000) {
+      const sum = rozvoz.reduce((a, t) => a + t.amount, 0);
+      add({ id: 'cat:rozvoz', kind: 'cat', cat: 'rozvoz', title: 'Rozvoz jídla a krabičky', perMonth: pm(sum), n: Math.round(rozvoz.length / nm),
+        text: `${pl(Math.round(rozvoz.length / nm), 'objednávka', 'objednávky', 'objednávek')} za měsíc.`,
+        tip: 'Rozvoz stojí za jídlo i za pohodlí (doručení, servisní poplatek, přirážka). Krabičky dávají smysl, jen když je opravdu sníš; jinak vař na víc dní.', ids: rozvoz.map(t => t.id) });
+    }
+    const taxi = byCat.taxi || [];
+    const tsum = taxi.reduce((a, t) => a + t.amount, 0);
+    if (pm(tsum) >= 60000) {
+      const short = taxi.filter(t => t.amount < 15000);
+      const ssum = short.reduce((a, t) => a + t.amount, 0);
+      add({ id: 'cat:taxi', kind: 'cat', cat: 'taxi', title: 'Taxi a Bolt', perMonth: pm(tsum), n: Math.round(taxi.length / nm),
+        text: `${pl(Math.round(taxi.length / nm), 'jízda', 'jízdy', 'jízd')} za měsíc` + (short.length ? `, z toho ${Math.round(short.length / nm)} pod 150 Kč (${kc(pm(ssum))} měsíčně).` : '.'),
+        tip: short.length ? 'Jízdy pod 150 Kč jsou vzdálenosti na MHD, kolo nebo pěšky. Bolt nech na noc a na kufr.' : 'Zkus, které jízdy šly nahradit MHD.', ids: taxi.map(t => t.id) });
+    }
+    const tab = byCat.tabak || [];
+    const tabsum = tab.reduce((a, t) => a + t.amount, 0);
+    if (tab.length && pm(tabsum) >= 20000) {
+      add({ id: 'cat:tabak', kind: 'cat', cat: 'tabak', title: 'Trafika a tabák', perMonth: pm(tabsum), n: Math.round(tab.length / nm),
+        text: `${pl(Math.round(tab.length / nm), 'nákup', 'nákupy', 'nákupů')} za měsíc.`, tip: 'Tahle položka nemá žádnou návratnost. Každé omezení je čistá úspora.', ids: tab.map(t => t.id) });
+    }
+
+    // 3) předplatná: stejná služba placená víckrát v jednom měsíci
+    const subs = byCat.predplatne || [];
+    for (const [fam, re] of SUB_FAMILY) {
+      const f = subs.filter(t => re.test(t.note));
+      if (!f.length) continue;
+      const names = new Set(f.map(t => Rules.merchantKey(baseNote(t.note))));
+      const byM = {};
+      for (const t of f) (byM[ymOf(t.date)] = byM[ymOf(t.date)] || []).push(t);
+      const dupM = Object.entries(byM).filter(([, a]) => a.length > 1);
+      if (names.size > 1 && dupM.length) {
+        const [ym, a] = dupM[dupM.length - 1];
+        const parts = a.map(t => `${baseNote(t.note)} ${kc(t.amount)}`).join(' + ');
+        const extra = dupM.flatMap(([, arr]) => arr.slice().sort((x, y) => y.amount - x.amount).slice(1));
+        add({ id: 'sub:' + fam.toLowerCase(), kind: 'sub', cat: 'predplatne', title: `${fam}: platíš víc předplatných`, perMonth: pm(dupM.reduce((s, [, arr]) => s + arr.slice().sort((x, y) => y.amount - x.amount).slice(1).reduce((q, t) => q + t.amount, 0), 0)),
+          text: `${ym.slice(5, 7)}/${ym.slice(0, 4)}: ${parts}.`, tip: 'Zkontroluj, jestli nemáš stejnou službu dvakrát (třeba web a aplikace, nebo dva účty). Nepotřebné zruš.', ids: extra.map(t => t.id) });
+      }
+    }
+    const subSum = subs.reduce((a, t) => a + t.amount, 0);
+    const subServices = new Set(subs.map(t => Rules.merchantKey(baseNote(t.note))));
+    if (subServices.size >= 4 && pm(subSum) >= 50000) {
+      add({ id: 'sub:all', kind: 'sub', cat: 'predplatne', title: 'Předplatná celkem', perMonth: pm(subSum), sev: 'low', n: subServices.size,
+        text: `${pl(subServices.size, 'služba', 'služby', 'služeb')}.`, tip: 'Projdi seznam v Plánu → Pravidelné platby. Co jsi za poslední měsíc nepoužil, zruš.', ids: subs.map(t => t.id), overlap: true });
+    }
+
+    // 4) poplatky bance (dají se skoro vždy zrušit nebo snížit)
+    const fees = list.filter(t => t.cat === 'poplatky' && /poplatek|komer[cč]n[ií] banka|\bkb\b|ceska sporitelna|csob|moneta|vedeni uctu/i.test(Rules.fold(t.note)));
+    const fsum = fees.reduce((a, t) => a + t.amount, 0);
+    if (fees.length) {
+      add({ id: 'fee:bank', kind: 'fee', cat: 'poplatky', title: 'Poplatky bance', perMonth: pm(fsum), sev: 'mid', n: Math.round(fees.length / nm),
+        text: fees.map(t => baseNote(t.note)).filter((v, i, a) => a.indexOf(v) === i).slice(0, 2).join(', ') + ` · ${pl(Math.max(1, Math.round(fees.length / nm)), 'poplatek', 'poplatky', 'poplatků')} za měsíc.`, tip: 'Podívej se do přehledu poplatků v bankovnictví. Placené doplňkové služby (pojištění karty, „Bezpečí“ apod.) se dají zrušit, účet vést zdarma.', ids: fees.map(t => t.id) });
+    }
+
+    // 5) jídlo venku dražší než nákup potravin
+    const sumOf = cats => list.filter(t => cats.includes(t.cat)).reduce((a, t) => a + t.amount, 0);
+    const out = sumOf(['restaurace', 'kavarna', 'hospoda', 'rozvoz']);
+    const food = sumOf(['potraviny']);
+    if (out > food && pm(out) >= 200000) {
+      add({ id: 'food:ratio', kind: 'ratio', cat: 'restaurace', title: 'Jídlo venku dražší než nákupy', perMonth: pm(out), sev: 'mid',
+        text: `Venku ${kc(pm(out))}, v obchodě ${kc(pm(food))} měsíčně. ` + [['restaurace', 'restaurace'], ['hospoda', 'hospody'], ['kavarna', 'kavárny'], ['rozvoz', 'rozvoz']].map(([c, n]) => [n, sumOf([c])]).filter(x => x[1] > 0).sort((a, b) => b[1] - a[1]).map(([n, v]) => `${n} ${kc(pm(v))}`).join(', ') + '.', tip: 'Když přesuneš třetinu jídel z venku domů, ušetříš řádově tisíce měsíčně.', ids: [], overlap: true });
+    }
+
+    items.sort((a, b) => b.perMonth - a.perMonth);
+    // úspora: polovina z plateb, na které upozornění míří (každá platba se počítá jednou)
+    const ids = new Set();
+    for (const it of items) if (!it.overlap) for (const id of it.ids) ids.add(id);
+    const flagged = list.filter(t => ids.has(t.id)).reduce((a, t) => a + t.amount, 0);
+    return { months, items, potential: Math.round(pm(flagged) * 12 / 2) };
+  }
+
   root.BudgetAnalytics = {
     init, pad, ymOf, shiftYM, daysIn, dayNum, baseNote, median,
-    summarize, byMonth, monthRange, series, avgByCat, merchants, recurring, daily, pace, calendar, noSpend,
+    summarize, byMonth, monthRange, series, avgByCat, merchants, recurring, daily, pace, calendar, noSpend, leaks, leakWindow,
   };
 }(typeof window !== 'undefined' ? window : globalThis));

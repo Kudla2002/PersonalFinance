@@ -20,6 +20,11 @@ Pět záložek (dole na mobilu, nahoře na počítači):
 - **Plán**: měsíční limity na kategorie (návrh z průměru jedním klikem), cíl míry spoření, automaticky nalezené
   pravidelné platby (měsíčně i ročně, i ukončené) s měsíčním součtem.
 
+**Zbytečné výdaje** (Přehled a Plán): z posledních tří uzavřených měsíců appka najde časté drobné útraty u jednoho
+řetězce (kafe, fast food, hospoda), drahý rozvoz a krátké jízdy taxíkem, tabák, dvakrát placená předplatná,
+poplatky bance a jídlo venku dražší než nákupy. U každého ukáže částku za měsíc a za rok a konkrétní tip.
+Co je v pořádku, jde skrýt (synchronizuje se). Ukázková data jsou označená pruhem a zmizí, jakmile nahraješ svoje.
+
 31 kategorií ve 8 skupinách (hospoda, kavárny, rozvoz jídla, fitko, doprava, taxi, tabák…), ne jedna „zábava“.
 
 **Import výpisu** (ikona Data → Importovat výpis): CSV z banky (UTF-8 i Windows-1250, `;` `,` tabulátor).
@@ -91,7 +96,7 @@ Soubor `Budgetovka – data.json` i pole `tx` v záloze:
 
 ```json
 {
-  "app": "budgetovka", "v": 3,
+  "app": "budgetovka", "v": 4,
   "tx": [{ "id": "…", "date": "2026-10-10", "cat": "potraviny", "amount": 125050, "note": "Albert", "at": 1760000000000, "u": 1760000000000 }],
   "tomb": { "id-smazane-polozky": 1760000100000 },
   "meta": { "r:albert": { "v": "potraviny", "u": 1760000000000 }, "l:hospoda": { "v": 150000, "u": 1760000000000 }, "g:rate": { "v": 20, "u": 1760000000000 } }
@@ -100,7 +105,7 @@ Soubor `Budgetovka – data.json` i pole `tx` v záloze:
 
 `amount` je v haléřích (125050 = 1 250,50 Kč), `u` je čas poslední změny, `tomb` jsou smazané položky.
 `meta` drží pravidla zařazení (`r:<obchodník>`, u příjmů s `+` na konci), měsíční limity (`l:<kategorie>`, haléře)
-a cíl spoření (`g:rate`, %); hodnota `null` znamená smazáno. Kategorie jsou v `cats.js`.
+a cíl spoření (`g:rate`, %), skrytá upozornění (`x:<id>`); hodnota `null` znamená smazáno. Kategorie jsou v `cats.js`.
 Při přidání kategorie nebo změně formátu zvyš `SCHEMA` v `app.js`, ať starší verze appky nepřepíše soubor, kterému nerozumí.
 
 ## Úpravy

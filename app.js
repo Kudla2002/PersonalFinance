@@ -12,7 +12,7 @@
     // drive.file: appka vidí jen soubor, který sama vytvořila, ne zbytek Disku
     scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
   };
-  const SCHEMA = 3;
+  const SCHEMA = 4; // 4: skrytá upozornění (meta x:…)
   const TOMB_TTL = 120 * 864e5;
   const STORE_KEY = 'budgetovka.v1';
   const MINUS = '−';
@@ -145,6 +145,7 @@
     if (k.startsWith('r:')) { const c = fixCat(v); return CAT[c] ? c : undefined; }
     if (k.startsWith('l:')) return Number.isFinite(v) && v > 0 && v < 1e11 ? Math.round(v) : undefined;
     if (k === 'g:rate') return Number.isFinite(v) && v >= 0 && v <= 100 ? Math.round(v) : undefined;
+    if (k.startsWith('x:')) return v ? 1 : null;
     return undefined;
   }
 
@@ -153,7 +154,7 @@
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
     const cutoff = Date.now() - TOMB_TTL;
     for (const [k, m] of Object.entries(obj)) {
-      if (!/^(?:r:.{1,90}|l:[a-z_]{1,30}|g:[a-z_]{1,30})$/.test(k) || !m || typeof m !== 'object') continue;
+      if (!/^(?:r:.{1,90}|l:[a-z_]{1,30}|g:[a-z_]{1,30}|x:[a-z0-9_:.\-]{1,80})$/.test(k) || !m || typeof m !== 'object') continue;
       if (!(Number.isFinite(m.u) && m.u > 0)) continue;
       let key = k;
       if (k.startsWith('l:')) key = 'l:' + fixCat(k.slice(2));
@@ -300,6 +301,7 @@
   function addMany(items) {
     const now = Date.now();
     let n = 0;
+    if (items.length) tx = tx.filter(t => !t.demo); // skutečná data vytlačí ukázku
     const have = new Set(tx.map(t => t.id));
     for (const it of items) {
       if (have.has(it.id)) continue;
@@ -570,7 +572,8 @@
   }
 
   function applyDoc(doc) {
-    tx = doc.tx.map(t => ({ ...t })).concat(tx.filter(t => t.demo));
+    // ukázková data drž jen dokud nejsou žádná skutečná
+    tx = doc.tx.map(t => ({ ...t })).concat(doc.tx.length ? [] : tx.filter(t => t.demo));
     tomb = { ...doc.tomb };
     meta = JSON.parse(JSON.stringify(doc.meta || {}));
     persist(false);
