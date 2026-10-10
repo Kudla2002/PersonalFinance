@@ -98,6 +98,25 @@
     return `<div class="large"><div><h1>${title}</h1>${sub ? `<div class="sub">${sub}</div>` : ''}</div>${right || ''}</div>`;
   }
 
+  const plw = (n, one, few, many) => `${n} ${n === 1 ? one : n >= 2 && n <= 4 ? few : many}`;
+
+  /* Hlavička záložky: název měsíce je zároveň výběr měsíce, šipky vedle. Šetří jeden řádek a jedno klepnutí. */
+  function mhead(label, allowAll, sub, right) {
+    const opts = monthList().map(ym => `<option value="${ym}"${!S.all && ym === S.ym ? ' selected' : ''}>${fmtMonth(ym)}</option>`).join('');
+    const allOpt = allowAll ? `<option value="all"${S.all ? ' selected' : ''}>Celé období</option>` : '';
+    const atFirst = S.all || S.ym <= D.first;
+    const atLast = S.all || S.ym >= D.last;
+    const title = S.all ? 'Celé období' : fmtMonth(S.ym);
+    return `<div class="mhead">
+      <div class="mh-l"><div class="mh-k">${label}</div>
+        <label class="mpick"><h1>${title}</h1><span class="chev" aria-hidden="true">▾</span><select id="monthSel" aria-label="Vybrat měsíc">${allOpt}${opts}</select></label>
+        ${sub ? `<div class="sub">${sub}</div>` : ''}</div>
+      <div class="mh-r">${right || ''}${(S.all || S.ym !== D.nowYM) ? '<button type="button" class="pback" data-act="month-today">Dnes</button>' : ''}
+        <button type="button" class="pnav" data-act="month-prev" aria-label="Předchozí měsíc"${atFirst ? ' disabled' : ''}>‹</button>
+        <button type="button" class="pnav" data-act="month-next" aria-label="Další měsíc"${atLast ? ' disabled' : ''}>›</button></div>
+    </div>`;
+  }
+
   function perbar(allowAll) {
     const opts = monthList().map(ym => `<option value="${ym}"${!S.all && ym === S.ym ? ' selected' : ''}>${fmtMonth(ym)}</option>`).join('');
     const allOpt = allowAll ? `<option value="all"${S.all ? ' selected' : ''}>Celé období</option>` : '';
@@ -143,9 +162,9 @@
   function emptyState() {
     return head('Budgetovka', 'Příjmy, výdaje a spoření po měsících.')
       + `<div class="panel" style="max-width:560px"><h2>Zatím tu nic není</h2>
-      <p class="cap" style="margin-top:6px">Nahraj výpis z banky (CSV) a appka pohyby sama roztřídí do kategorií jako hospoda, kavárna, gym nebo rozvoz. Zbytek zařadíš jedním klepnutím a appka si to pamatuje. Data zůstávají jen v tomto prohlížeči, volitelně i na tvém Google Disku.</p>
+      <p class="cap" style="margin-top:6px">Nahraj výpis z banky (CSV) nebo zálohu (JSON), klidně jen přetažením souboru do okna. Appka pohyby sama roztřídí do kategorií jako hospoda, kavárna, gym nebo rozvoz. Zbytek zařadíš jedním klepnutím a appka si to pamatuje. Data zůstávají jen v tomto prohlížeči, volitelně i na tvém Google Disku.</p>
       <div class="chips">
-        <button type="button" class="chipbtn on" data-act="import">Importovat výpis (CSV)</button>
+        <button type="button" class="chipbtn on" data-act="pick-file">Nahrát výpis nebo zálohu</button>
         <button type="button" class="chipbtn" data-act="add">Přidat pohyb ručně</button>
         <button type="button" class="chipbtn" data-act="demo">Vyzkoušet na ukázce</button>
       </div></div>`;
@@ -288,27 +307,25 @@
     const ym = S.ym;
     const list = D.mm[ym] || [];
     const s = sumTx(list);
-    const prevList = D.mm[shiftYM(ym, -1)] || [];
-    const sp = sumTx(prevList);
+    const sp = sumTx(D.mm[shiftYM(ym, -1)] || []);
     const frac = fracOf(ym);
     const nd = daysIn(ym);
     const day = +D.today.slice(8, 10);
-    const sub = ym === D.nowYM ? `Den ${day} z ${nd}, zbývá ${nd - day} ${nd - day === 1 ? 'den' : nd - day >= 2 && nd - day <= 4 ? 'dny' : 'dní'}`
-      : ym < D.nowYM ? 'Uzavřený měsíc' : 'Budoucí měsíc';
-    let h = head('Přehled', sub) + perbar(false);
-
-    const unsorted = D.tx.filter(t => t.cat === 'ostatni');
-    if (unsorted.length) {
-      const sum = unsorted.reduce((a, t) => a + t.amount, 0);
-      h += `<div class="banner"><span><b>${unsorted.length}</b> ${unsorted.length === 1 ? 'pohyb čeká' : 'pohybů čeká'} na zařazení (${moneyRound(sum)}). Zařaď obchodníka jednou a appka si to pamatuje.</span><button type="button" data-act="triage">Zařadit</button></div>`;
-    }
+    const sub = ym === D.nowYM ? `Den ${day} z ${nd} · zbývá ${plw(nd - day, 'den', 'dny', 'dní')}` : ym < D.nowYM ? 'Uzavřený měsíc' : 'Budoucí měsíc';
+    let h = mhead('Přehled', false, sub);
+    let paceHtml = () => '';
 
     if (!list.length) {
-      return h + `<div class="panel"><h2>V tomto měsíci nic není</h2><p class="cap">Přidej pohyb, nebo se přepni na jiný měsíc.</p><div class="chips"><button type="button" class="chipbtn on" data-act="add">Přidat pohyb</button></div></div>`;
+      return h + `<div class="panel"><h2>V tomto měsíci nic není</h2><p class="cap">Přidej pohyb, nebo se přepni na jiný měsíc.</p><div class="chips"><button type="button" class="chipbtn on" data-act="add">Přidat pohyb</button>${D.yms.length ? `<button type="button" class="chipbtn" data-act="month-last">Poslední měsíc s daty</button>` : ''}</div></div>` + todoBlock(ym, s);
     }
 
-    // hlavní karty
     const pc = paceChart(ym, list);
+    // tempo: na počítači vedle hlavní karty, na mobilu až pod „Co řešit“
+    paceHtml = cls => `<div class="panel ${cls}">
+        <h2>Tempo měsíce</h2>
+        <div class="cap"><span style="color:var(--tint)">●</span> ${ym === D.nowYM ? 'letos' : fmtMonthName(ym)} ${hasProj(pc) ? '<span style="color:var(--orange)">●</span> odhad ' : ''}${pc.hasAvg ? '<span style="color:var(--gray)">●</span> průměr předchozích měsíců' : ''}</div>
+        ${s.out > 0 ? pc.html : '<div class="empty">V tomto měsíci zatím žádné výdaje.</div>'}
+      </div>`;
     const fixedV = Object.entries(s.byCat).reduce((a, [c, v]) => a + (CAT[c].kind === 'out' && CAT[c].fixed ? v : 0), 0);
     const varV = s.out - fixedV;
     const base = Math.max(s.in, s.out + s.save, 1);
@@ -316,80 +333,99 @@
     const leftPos = s.in - s.out - s.save;
     const neg = s.left < 0;
     const rate = s.rate == null ? null : Math.round(s.rate * 100);
+    const cmp = (cur, prev, goodUp) => (ym === D.nowYM ? (prev ? `minule ${moneyRound(prev)}` : '&nbsp;') : delta(cur, prev, goodUp) || (prev ? `minule ${moneyRound(prev)}` : '&nbsp;'));
 
     h += `<div class="hero">
-      <div class="panel">
+      <div class="panel hero-main">
         <div class="eyebrow">${neg ? 'Přečerpáno' : s.in > 0 ? 'Zbývá z příjmů' : 'Výdaje bez příjmů'}</div>
-        <div class="big${neg ? ' neg' : ''}">${s.in > 0 ? (neg ? MINUS : '') + numStr(Math.abs(s.left)) : MINUS + numStr(s.out)}<small> Kč</small></div>
+        <div class="big${neg ? ' neg' : ''}">${s.in > 0 ? (neg ? MINUS : '') + numStr(Math.round(Math.abs(s.left) / 100) * 100) : MINUS + numStr(Math.round(s.out / 100) * 100)}<small> Kč</small></div>
         <div class="lbar" role="img" aria-label="Rozdělení příjmů">${seg(fixedV, 'var(--indigo)')}${seg(varV, 'var(--orange)')}${seg(s.save, 'var(--yellow)')}${s.in > 0 ? seg(Math.max(0, leftPos), 'var(--green)') : ''}</div>
         <div class="leg"><span><i style="background:var(--indigo)"></i>Pevné ${moneyRound(fixedV)}</span><span><i style="background:var(--orange)"></i>Ostatní ${moneyRound(varV)}</span>${s.save ? `<span><i style="background:var(--yellow)"></i>Spoření ${moneyRound(s.save)}</span>` : ''}${s.in > 0 && leftPos > 0 ? `<span><i style="background:var(--green)"></i>Zbývá ${moneyRound(leftPos)}</span>` : ''}</div>
+        <div class="stats">
+          <button type="button" class="st" data-act="go" data-tab="moves" data-kind="in"><span class="k">Příjmy</span><b class="good">${moneyRound(s.in)}</b><small>${cmp(s.in, sp.in, true)}</small></button>
+          <button type="button" class="st" data-act="go" data-tab="moves" data-kind="out"><span class="k">Výdaje</span><b>${moneyRound(s.out)}</b><small>${cmp(s.out, sp.out, false)}</small></button>
+          <div class="st"><span class="k">Míra úspor</span><b class="${rate != null && rate < 0 ? 'bad' : ''}">${rate == null ? '–' : rate + ' %'}</b><small>${D.target != null ? `cíl ${D.target} %` : 'z příjmů'}</small></div>
+          <div class="st"><span class="k">Na den</span><b>${pc.p.upTo ? moneyRound(pc.p.perDay) : '–'}</b><small>bez pevných plateb</small></div>
+        </div>
         ${pc.p.projected != null && s.in > 0 ? `<div class="callout${s.in - pc.p.projected - s.save < 0 ? ' warn' : ''}">Při tomhle tempu skončí měsíc na <b>${moneyRound(pc.p.projected)}</b> výdajů${pc.hasAvg ? `, běžně je to ${moneyRound(pc.avgEnd)}` : ''}. Zbyde ${s.in - pc.p.projected - s.save >= 0 ? `asi <b>${moneyRound(s.in - pc.p.projected - s.save)}</b>` : `mínus <b>${moneyRound(pc.p.projected + s.save - s.in)}</b>`}.</div>` : ''}
       </div>
-      <div class="panel">
-        <h2>Tempo měsíce</h2>
-        <div class="cap"><span style="color:var(--tint)">●</span> letos ${hasProj(pc) ? '<span style="color:var(--orange)">●</span> odhad ' : ''}${pc.hasAvg ? '<span style="color:var(--gray)">●</span> průměr předchozích měsíců' : ''}</div>
-        ${s.out > 0 ? pc.html : '<div class="empty">V tomto měsíci zatím žádné výdaje.</div>'}
-      </div>
+      ${paceHtml('hero-pace')}
     </div>`;
 
-    // dlaždice
-    const noSp = An.noSpend(pc.p.days, pc.p.upTo);
-    h += `<div class="tiles">
-      <div class="tile"><div class="k"><i style="background:var(--green)"></i>Příjmy</div><div class="v">${compactKc(s.in)}</div><div class="h">${ym === D.nowYM ? (sp.in ? `minulý měsíc ${moneyRound(sp.in)}` : '&nbsp;') : delta(s.in, sp.in, true) || '&nbsp;'}</div></div>
-      <div class="tile"><div class="k"><i style="background:var(--orange)"></i>Výdaje</div><div class="v">${compactKc(s.out)}</div><div class="h">${ym === D.nowYM ? `minulý měsíc ${moneyRound(sp.out)}` : delta(s.out, sp.out, false) || '&nbsp;'}</div></div>
-      <div class="tile${rate != null && rate < 0 ? ' alert' : ''}"><div class="k"><i style="background:var(--yellow)"></i>Míra úspor</div><div class="v">${rate == null ? '–' : rate + '<small> %</small>'}</div><div class="h">${D.target != null ? `cíl ${D.target} %` : 'z příjmů'}</div></div>
-      <div class="tile"><div class="k"><i style="background:var(--indigo)"></i>Na den</div><div class="v">${pc.p.upTo ? compactKc(pc.p.perDay) : '–'}</div><div class="h">bez pevných výdajů</div></div>
-      <div class="tile"><div class="k"><i style="background:var(--teal)"></i>Dny bez útraty</div><div class="v">${pc.p.upTo ? noSp.free + `<small> z ${pc.p.upTo}</small>` : '–'}</div><div class="h">${noSp.streak > 1 ? `nejdelší série ${noSp.streak}` : '&nbsp;'}</div></div>
-    </div>`;
-
-    h += leaksSection(false);
-
-    // kam to teče
+    // kategorie s rozbalením přímo na místě
     const avg = An.avgByCat(D.tx, ym, 3);
     const grpParts = GROUPS.filter(g => g.id !== 'in').map(g => ({
-      id: g.id, name: g.name, v: g.id === 'spo' ? s.save : (s.byGrp[g.id] || 0),
-      color: `var(--g-${g.id})`,
+      id: g.id, name: g.name, v: g.id === 'spo' ? s.save : (s.byGrp[g.id] || 0), color: `var(--g-${g.id})`,
     })).filter(p => p.v > 0).sort((a, b) => b.v - a.v);
     const totalFlow = grpParts.reduce((a, p) => a + p.v, 0);
     const cats = CATS.filter(c => c.kind !== 'in' && s.byCat[c.id]).sort((a, b) => s.byCat[b.id] - s.byCat[a.id]);
     const counts = {};
     for (const t of list) counts[t.cat] = (counts[t.cat] || 0) + 1;
     const maxScale = Math.max(1, ...cats.map(c => s.byCat[c.id]), ...cats.map(c => D.lim[c.id] || 0));
-    const shown = S.openCats ? cats : cats.slice(0, 10);
-
-    h += `<div class="section"><div class="sechead">Kam to teče</div>
+    const shown = S.openCats ? cats : cats.slice(0, 8);
+    const catRow = c => {
+      const v = s.byCat[c.id];
+      const e = (avg.avg[c.id] || 0) * frac;
+      const over = D.lim[c.id] && v > D.lim[c.id];
+      const dl = c.kind === 'out' && !c.fixed && avg.months >= 2 && frac >= 0.5 && e >= 30000 ? delta(v, e, false) : '';
+      const open = S.openCat === c.id;
+      let r = `<button type="button" class="row row-btn has-bar${open ? ' open' : ''}" data-act="cat-open" data-cat="${c.id}" aria-expanded="${open}">${av(c.id)}
+        <div class="main"><div class="t">${esc(c.name)}</div><div class="s">${plw(counts[c.id], 'platba', 'platby', 'plateb')}${avg.avg[c.id] ? ` · obvykle ${moneyRound(avg.avg[c.id])}` : ''}${D.lim[c.id] ? ` · limit ${moneyRound(D.lim[c.id])}` : ''}</div></div>
+        <div class="end${over ? ' up' : ''}">${money(v)}<small>${dl}</small></div><span class="disc" aria-hidden="true">›</span>
+        <div class="bar2"><i style="width:${(v / maxScale * 100).toFixed(1)}%;background:${over ? 'var(--red)' : catColor(c.id)}"></i>${D.lim[c.id] ? `<u style="left:${Math.min(100, D.lim[c.id] / maxScale * 100).toFixed(1)}%"></u>` : ''}</div></button>`;
+      if (open) {
+        const items = list.filter(t => t.cat === c.id).sort((x, y) => y.amount - x.amount);
+        r += `<div class="catx">${items.slice(0, 8).map(t => txRow(t, { date: true })).join('')}
+          <div class="catx-foot">${items.length > 8 ? `<button type="button" data-act="go" data-tab="moves" data-cat="${c.id}">Všech ${items.length} v Pohybech</button>` : '<span></span>'}
+          <button type="button" data-act="limit-edit" data-cat="${c.id}">${D.lim[c.id] ? 'Upravit limit' : 'Nastavit limit'}</button></div></div>`;
+      }
+      return r;
+    };
+    const catsHtml = `<div class="section"><div class="sechead">Kam to teče</div>
       <div class="panel"><div class="mixbox">
         ${K.donut(grpParts.map(p => ({ v: p.v, color: p.color, title: `${esc(p.name)}: ${moneyRound(p.v)}` })), 150, 24,
           `<text x="75" y="72" text-anchor="middle" style="font-size:11px;fill:var(--label2)">celkem</text><text x="75" y="92" text-anchor="middle" style="font-size:17px;font-weight:700;fill:var(--label)">${compact(totalFlow)}</text>`)}
         <div class="mixleg">${grpParts.map(p => `<div class="r"><i style="background:${p.color}"></i><span>${esc(p.name)}</span><b>${moneyRound(p.v)}</b><em>${pctText(p.v, totalFlow)}</em></div>`).join('')}</div>
       </div></div>
-      <div class="group" style="margin-top:12px">${shown.map(c => {
-        const v = s.byCat[c.id];
-        const e = (avg.avg[c.id] || 0) * frac;
-        const over = D.lim[c.id] && v > D.lim[c.id];
-        const dl = c.kind === 'out' && !c.fixed && avg.months >= 2 && frac >= 0.5 && e >= 30000 ? delta(v, e, false) : '';
-        return `<button type="button" class="row row-btn has-bar" data-act="go" data-tab="moves" data-cat="${c.id}">${av(c.id)}
-          <div class="main"><div class="t">${esc(c.name)}</div><div class="s">${counts[c.id]} ${counts[c.id] === 1 ? 'platba' : counts[c.id] < 5 ? 'platby' : 'plateb'}${avg.avg[c.id] ? ` · obvykle ${moneyRound(avg.avg[c.id])}/měs.` : ''}${D.lim[c.id] ? ` · limit ${moneyRound(D.lim[c.id])}` : ''}</div></div>
-          <div class="end${over ? ' up' : ''}">${money(v)}<small>${dl}</small></div>
-          <div class="bar2"><i style="width:${(v / maxScale * 100).toFixed(1)}%;background:${over ? 'var(--red)' : catColor(c.id)}"></i>${D.lim[c.id] ? `<u style="left:${Math.min(100, D.lim[c.id] / maxScale * 100).toFixed(1)}%"></u>` : ''}</div></button>`;
-      }).join('')}
-      ${cats.length > 10 ? `<button type="button" class="more" data-act="cats-all">${S.openCats ? 'Zobrazit méně' : `Zobrazit všech ${cats.length} kategorií`}</button>` : ''}</div></div>`;
+      <div class="group cats" style="margin-top:12px">${shown.map(catRow).join('')}
+      ${cats.length > 8 ? `<button type="button" class="more" data-act="cats-all">${S.openCats ? 'Zobrazit méně' : `Zobrazit všech ${cats.length} kategorií`}</button>` : ''}</div>
+      <div class="secfoot">Klepnutím na kategorii uvidíš její platby.</div></div>`;
 
-    // obchodníci
     const ms = An.merchants(list, 'out').slice(0, 5);
-    if (ms.length) {
-      h += `<div class="section"><div class="itemhead"><div class="sechead">Kde utrácíš nejvíc</div><button type="button" data-act="go" data-tab="moves" data-sub="merch">Všichni</button></div>
-        <div class="group">${ms.map(m => merchRow(m, s.out)).join('')}</div></div>`;
-    }
-
+    const merchHtml = ms.length ? `<div class="section"><div class="itemhead"><div class="sechead">Kde utrácíš nejvíc</div><button type="button" data-act="go" data-tab="moves" data-sub="merch">Všichni</button></div>
+      <div class="group">${ms.map(m => merchRow(m, s.out)).join('')}</div></div>` : '';
     const ins = insights(ym, s);
-    if (ins.length) {
-      h += `<div class="section"><div class="sechead">Postřehy</div><div class="group">${ins.map(i =>
-        `<div class="row">${avGrpRaw(i.col, i.icon)}<div class="main"><div class="s" style="white-space:normal;color:var(--label);font-size:14px;line-height:1.4">${i.html}</div></div></div>`).join('')}</div></div>`;
-    }
+    const insHtml = ins.length ? `<div class="section"><div class="sechead">Postřehy</div><div class="group">${ins.map(i =>
+      `<div class="row">${avGrpRaw(i.col, i.icon)}<div class="main"><div class="s" style="white-space:normal;color:var(--label);font-size:14px;line-height:1.4">${i.html}</div></div></div>`).join('')}</div></div>` : '';
+
+    h += `<div class="dash"><div class="d-todo">${todoBlock(ym, s)}<div class="section mob-only">${paceHtml('')}</div></div><div class="d-cats">${catsHtml}</div><div class="d-side">${merchHtml}${insHtml}</div></div>`;
     return h;
   }
 
+  /* Co řešit: všechno, co chce akci, na jednom místě a jedním klepnutím. */
+  function todoBlock(ym, s) {
+    const rows = [];
+    const un = D.tx.filter(t => t.cat === 'ostatni');
+    if (un.length) {
+      const sum = un.reduce((a, t) => a + t.amount, 0);
+      rows.push(`<div class="leak" style="--sev:var(--tint)"><button type="button" class="row row-btn" data-act="triage">${av('ostatni')}
+        <div class="main"><div class="t">${plw(un.length, 'nezařazený pohyb', 'nezařazené pohyby', 'nezařazených pohybů')}</div><div class="s multi">${moneyRound(sum)} · zařadíš jedním klepnutím, appka si to zapamatuje</div></div>
+        <div class="end"><span class="pill">Zařadit</span></div></button></div>`);
+    }
+    for (const c of CATS) {
+      const L = D.lim[c.id], v = (s && s.byCat[c.id]) || 0;
+      if (L && v > L) rows.push(`<div class="leak" style="--sev:var(--red)"><button type="button" class="row row-btn" data-act="cat-jump" data-cat="${c.id}">${av(c.id)}
+        <div class="main"><div class="t">${esc(c.name)}: přes limit</div><div class="s">${moneyRound(v)} z ${moneyRound(L)}</div></div>
+        <div class="end up">+${moneyRound(v - L)}</div></button></div>`);
+    }
+    const Lk = D.leaks();
+    const vis = Lk.items.filter(it => !hiddenLeak(it));
+    vis.slice(0, 3).forEach(it => rows.push(leakRow(it)));
+    if (!rows.length) return '';
+    return `<div class="section"><div class="itemhead"><div class="sechead">Co řešit</div>${vis.length ? `<button type="button" data-act="go" data-tab="plan">${vis.length > 3 ? `Všechna upozornění (${vis.length})` : 'Detail a tipy'}</button>` : ''}</div>
+      <div class="group leaks">${rows.join('')}</div>
+      ${vis.length && Lk.potential > 0 ? `<div class="secfoot">Zbytečné výdaje z ${monthsLabel(Lk.months)}. Když je omezíš na polovinu, ušetříš asi <b>${moneyRound(Lk.potential)}</b> ročně.</div>` : ''}</div>`;
+  }
 
   /* ---------- zbytečné výdaje ---------- */
   const SEV = { high: ['var(--red)', 'Vysoké'], mid: ['var(--orange)', 'Střední'], low: ['var(--yellow)', 'Nízké'] };
@@ -508,7 +544,7 @@
   function viewMoves() {
     const sub = S.all ? 'Celé období' : fmtMonth(S.ym);
     const seg = (items, cur, act, key) => `<div class="mini-seg" role="group">${items.map(([v, l]) => `<button type="button" data-act="${act}" data-v="${v}" aria-pressed="${cur === v}">${l}</button>`).join('')}</div>`;
-    let h = head('Pohyby', sub, `<span class="qchip" id="mvSummary">${movesSummary()}</span>`) + perbar(true);
+    let h = mhead('Pohyby', true, `<span id="mvSummary">${movesSummary()}</span>`);
     h += `<div class="toolbar">
       ${seg([['list', 'Pohyby'], ['merch', 'Obchodníci']], S.sub, 'sub')}
       ${S.sub === 'list' ? seg([['all', 'Vše'], ['in', 'Příjmy'], ['out', 'Výdaje'], ['save', 'Spoření']], S.kind, 'kind')
@@ -532,7 +568,7 @@
     const todayN = ym === D.nowYM ? +D.today.slice(8, 10) : 0;
     if (!S.day || !S.day.startsWith(ym)) S.day = ym === D.nowYM ? D.today : (top && top.out ? top.date : `${ym}-01`);
     const dows = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
-    let h = head('Kalendář', 'Kdy a kolik utrácíš') + perbar(false);
+    let h = mhead('Kalendář', false, 'Kdy a kolik utrácíš');
     h += `<div class="tiles">
       <div class="tile"><div class="k">Utraceno</div><div class="v">${compactKc(p.spent)}</div><div class="h">${p.upTo ? `Ø ${moneyRound(p.spent / p.upTo)} za den` : '&nbsp;'}</div></div>
       <div class="tile"><div class="k">Nejdražší den</div><div class="v">${top && top.out ? compactKc(top.out) : '–'}</div><div class="h">${top && top.out ? fmtDay(top.date).replace(/^[^ ]+ /, '') : '&nbsp;'}</div></div>
@@ -712,7 +748,7 @@
     const list = D.mm[ym] || [];
     const s = sumTx(list);
     const frac = fracOf(ym);
-    let h = head('Plán', 'Zbytečné výdaje, limity, cíl spoření a pravidelné platby') + leaksSection(true) + perbar(false);
+    let h = mhead('Plán', false, 'Co omezit, limity, cíl spoření a pravidelné platby') + leaksSection(true);
 
     // limity
     const limCats = CATS.filter(c => D.lim[c.id]).sort((a, b) => (s.byCat[b.id] || 0) / D.lim[b.id] - (s.byCat[a.id] || 0) / D.lim[a.id]);
@@ -802,7 +838,7 @@
   /* Ukázková data musí být na první pohled poznat, jinak vypadají jako tvoje čísla. */
   function demoBanner() {
     if (!BG.hasDemo()) return '';
-    return `<div class="banner demo"><span><b>Ukázková data.</b> Vymyšlená čísla na vyzkoušení, ne tvoje. Nahraj svůj výpis nebo zálohu a ukázka zmizí sama.</span><span class="bbtns"><button type="button" data-act="data">Nahrát svoje data</button><button type="button" class="ghost" data-act="demo-clear">Smazat ukázku</button></span></div>`;
+    return `<div class="banner demo"><span><b>Ukázková data.</b> Vymyšlená čísla na vyzkoušení, ne tvoje. Nahraj svůj výpis nebo zálohu a ukázka zmizí sama.</span><span class="bbtns"><button type="button" data-act="pick-file">Nahrát svoje data</button><button type="button" class="ghost" data-act="demo-clear">Smazat ukázku</button></span></div>`;
   }
 
   let firstRender = true;
@@ -867,13 +903,24 @@
         break;
       }
       case 'leak-showhidden': S.showHidden = !S.showHidden; render(); break;
+      case 'cat-open': S.openCat = S.openCat === el.dataset.cat ? null : el.dataset.cat; render(); break;
+      case 'cat-jump': {
+        S.openCat = el.dataset.cat;
+        if (!S.openCats) S.openCats = true;
+        render();
+        const r = document.querySelector(`[data-act="cat-open"][data-cat="${el.dataset.cat}"]`);
+        if (r) r.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        break;
+      }
+      case 'month-last': if (D.yms.length) setMonth(D.yms[D.yms.length - 1]); break;
+      case 'pick-file': { const d = DLG(); if (d.pickFile) d.pickFile(); break; }
       case 'go':
         if (el.dataset.all) S.all = true;
         S.tab = el.dataset.tab;
         S.cat = el.dataset.cat || null;
         S.q = '';
-        S.kind = 'all';
-        if (el.dataset.sub) S.sub = el.dataset.sub; else if (el.dataset.cat) S.sub = 'list';
+        S.kind = el.dataset.kind || 'all';
+        if (el.dataset.sub) S.sub = el.dataset.sub; else if (el.dataset.cat || el.dataset.kind) S.sub = 'list';
         S.mkind = 'out';
         S.shown = 200;
         saveUI();
@@ -948,6 +995,27 @@
   });
 
   applyColors();
+  /* swipe doleva/doprava = další/předchozí měsíc (mobil) */
+  (function swipe() {
+    let x0 = null, y0 = 0, t0 = 0;
+    const view = $('#view');
+    view.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1 || e.target.closest('input, select, textarea, .chartwrap, .hscroll, table, .mini-seg')) { x0 = null; return; }
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
+    }, { passive: true });
+    view.addEventListener('touchend', e => {
+      if (x0 == null) return;
+      const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+      x0 = null;
+      if (Date.now() - t0 > 600 || Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+      if (!['home', 'moves', 'cal', 'plan'].includes(S.tab) || S.all) return;
+      const next = shiftYM(S.ym, dx < 0 ? 1 : -1);
+      if (next < D.first || next > D.last) return;
+      setMonth(next);
+      BG.toast(fmtMonth(next));
+    }, { passive: true });
+  })();
+
   window.BGV = { S, render, renderMovesList, setTab, TABS, applyColors, get D() { return D; }, catColor, av, txRow, sorted, merchRow };
   BG.ui.render = () => render();
 })();

@@ -28,6 +28,16 @@
     return h;
   }
 
+  /* nejpoužívanější kategorie daného druhu (pro rychlé čipy) */
+  function topCats(kind, n, skip) {
+    const cnt = {};
+    for (const t of BG.tx) if (CAT[t.cat] && CAT[t.cat].kind === kind && !(skip || []).includes(t.cat)) cnt[t.cat] = (cnt[t.cat] || 0) + 1;
+    const used = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]);
+    const fill = CATS.filter(c => c.kind === kind && !used.includes(c.id) && !(skip || []).includes(c.id)).map(c => c.id);
+    return used.concat(fill).slice(0, n);
+  }
+  const chip = (id, on) => `<button type="button" class="catchip${on ? ' on' : ''}" data-cat="${id}" style="--cc:${V.catColor(id)}"><i></i>${esc(CAT[id].name)}</button>`;
+
   const amountInput = minor => (minor % 100 === 0 ? String(minor / 100) : (minor / 100).toFixed(2).replace('.', ','));
   const keyOf = note => { const b = An.baseNote(note); return Rules.merchantKey(b) || b.toLowerCase(); };
   const prettyKey = k => { const s = k.replace(/\+$/, ''); return s.charAt(0).toUpperCase() + s.slice(1); };
@@ -58,6 +68,7 @@
       <div class="fg"><div class="group">
         <div class="frow"><label for="enAmt">Částka</label><input id="enAmt" type="text" inputmode="decimal" autocomplete="off" placeholder="0" value="${editing ? amountInput(t.amount) : ''}"><span class="lab" style="width:auto;color:var(--label2)">Kč</span></div>
         <div class="frow"><label for="enCat">Kategorie</label><select id="enCat"></select></div>
+        <div class="chiprow" id="enChips"></div>
         <div class="frow"><label for="enDate">Datum</label><input id="enDate" type="date" value="${editing ? t.date : defDate}"></div>
         <div class="frow"><label for="enNote">Obchodník</label><input id="enNote" type="text" maxlength="80" autocomplete="off" list="enNotes" placeholder="Např. Albert" value="${editing ? esc(t.note) : ''}"><datalist id="enNotes"></datalist></div>
       </div></div>
@@ -72,6 +83,13 @@
     const kindsOf = k => (k === 'save' ? ['save'] : [k]);
     function fillCats(selected) {
       sel.innerHTML = catOptions(kindsOf(st.kind), selected, st.kind === 'out' ? [] : []);
+      fillChips();
+    }
+    function fillChips() {
+      const box = $('#enChips', dlg);
+      const ids = topCats(st.kind, st.kind === 'out' ? 8 : 4, ['ostatni']);
+      if (!ids.includes(sel.value)) ids.unshift(sel.value);
+      box.innerHTML = ids.map(id => chip(id, id === sel.value)).join('');
     }
     fillCats(editing ? t.cat : defCat[st.kind]);
 
@@ -107,13 +125,18 @@
       fillCats(defCat[st.kind]);
       syncRem();
     });
-    sel.addEventListener('change', () => { st.touched = true; syncRem(); });
+    sel.addEventListener('change', () => { st.touched = true; fillChips(); syncRem(); });
+    $('#enChips', dlg).addEventListener('click', e => {
+      const b = e.target.closest('[data-cat]');
+      if (!b) return;
+      sel.value = b.dataset.cat; st.touched = true; fillChips(); syncRem();
+    });
     note.addEventListener('input', syncRem);
     note.addEventListener('change', () => {
       // u nového pohybu nabídni kategorii podle obchodníka, dokud kategorii nezměníš ručně
       if (editing || st.touched || st.kind === 'save' || !note.value.trim()) { syncRem(); return; }
       const r = Rules.categorize({ name: note.value.trim(), msg: '', amount: st.kind === 'in' ? 1 : -1, type: '', card: true }, BG.userRules());
-      if (r.how !== 'fallback' && CAT[r.cat] && CAT[r.cat].kind === st.kind) sel.value = r.cat;
+      if (r.how !== 'fallback' && CAT[r.cat] && CAT[r.cat].kind === st.kind) { sel.value = r.cat; fillChips(); }
       syncRem();
     });
 
@@ -154,7 +177,7 @@
       });
     }
     open(dlg);
-    if (!editing && !('ontouchstart' in window)) setTimeout(() => amt.focus(), 60);
+    if (!editing) { try { amt.focus({ preventScroll: true }); } catch (e) { /* bez fokusu */ } }
   }
 
   /* ========== data, záloha a Google ========== */
@@ -168,9 +191,8 @@
           <div class="gbtns"><button type="button" id="gLogin" class="primary" hidden>Přihlásit přes Google</button><button type="button" id="gSyncNow" hidden>Synchronizovat teď</button><button type="button" id="gLogout" hidden>Odhlásit</button></div>
         </div></div></div>
         <div class="fg"><div class="sechead">Import</div><div class="group">
-          <button type="button" class="btnrow" id="btnCsv">Importovat výpis z banky (CSV)…</button>
-          <button type="button" class="btnrow" id="btnJson">Nahrát zálohu (JSON)…</button>
-        </div><div class="secfoot">Soubor se zpracuje jen v tomhle prohlížeči a nikam se neposílá. Duplicity se přeskočí, takže můžeš nahrát i překrývající se výpisy.</div></div>
+          <button type="button" class="btnrow" id="btnCsv">Nahrát výpis (CSV) nebo zálohu (JSON)…</button>
+        </div><div class="secfoot">Soubor můžeš taky jen přetáhnout do okna. Zpracuje se jen v tomhle prohlížeči a nikam se neposílá. Duplicity se přeskočí a záloha se sloučí, nic se nepřepíše.</div></div>
         <div class="fg"><div class="sechead">Záloha</div><div class="group">
           <button type="button" class="btnrow" id="btnExpJson">Stáhnout zálohu (JSON)</button>
           <button type="button" class="btnrow" id="btnExpCsv">Stáhnout pro Excel (CSV)</button>
@@ -186,8 +208,7 @@
         <p class="msg" id="dataMsg"></p>`,
     });
     const d = dlgs.data;
-    $('#btnCsv', d).addEventListener('click', () => { $('#fileCsv').value = ''; $('#fileCsv').click(); });
-    $('#btnJson', d).addEventListener('click', () => { $('#fileJson').value = ''; $('#fileJson').click(); });
+    $('#btnCsv', d).addEventListener('click', pickFile);
     $('#btnExpJson', d).addEventListener('click', () => download(`budgetovka-zaloha-${todayISO()}.json`, BG.exportJSON(), 'application/json'));
     $('#btnExpCsv', d).addEventListener('click', () => download(`budgetovka-${todayISO()}.csv`, BG.exportCSV(), 'text/csv;charset=utf-8'));
     $('#btnTriage', d).addEventListener('click', () => { close(d); openTriage(); });
@@ -227,25 +248,63 @@
     setTimeout(() => URL.revokeObjectURL(url), 3000);
   }
 
-  $('#fileJson').addEventListener('change', e => {
-    const f = e.target.files && e.target.files[0];
+  /* Jeden vstup pro všechno: záloha (JSON) i výpis z banky (CSV). Pozná se podle obsahu, ne podle tlačítka. */
+  function mergeJSON(text) {
+    try {
+      BG.snap();
+      const r = BG.mergeBackup(text);
+      close(dlgs.data);
+      // ukaž nejnovější měsíc, ve kterém jsou data
+      const last = BG.tx.reduce((m, t) => (t.date > m ? t.date : m), '');
+      if (last && window.BGV) { const S = window.BGV.S; S.all = false; S.ym = last.slice(0, 7); S.tab = 'home'; window.BGV.render({ top: true }); }
+      BG.toast(r.added > 0 ? `Záloha sloučena, přibylo ${r.added} pohybů` : 'Záloha sloučena, nic nového v ní nebylo', r.added > 0 ? { label: 'Vrátit', run: BG.undo } : undefined);
+    } catch (err) {
+      BG.toast(err.message || 'Zálohu se nepodařilo přečíst.');
+    }
+  }
+
+  function startCSV(name, buf) {
+    let a;
+    try { a = Imp.analyse(buf); } catch (err) { a = { error: 'Soubor se nepodařilo přečíst.' }; }
+    if (a.error) { BG.toast(a.error); return; }
+    IMP = { name, a, map: { ...a.map }, revive: false, mapOpen: a.needsMap };
+    close(dlgs.data);
+    renderImport();
+    open(dlgs.imp);
+  }
+
+  function handleFile(f) {
     if (!f) return;
+    if (f.size > 25 * 1024 * 1024) { BG.toast('Soubor je moc velký.'); return; }
     const fr = new FileReader();
     fr.onload = () => {
-      try {
-        BG.snap();
-        const r = BG.mergeBackup(String(fr.result));
-        close(dlgs.data);
-        // ukaž nejnovější měsíc, ve kterém jsou data
-        const last = BG.tx.reduce((m, t) => (t.date > m ? t.date : m), '');
-        if (last && window.BGV) { const S = window.BGV.S; S.all = false; S.ym = last.slice(0, 7); S.tab = 'home'; window.BGV.render({ top: true }); }
-        BG.toast(r.added > 0 ? `Záloha sloučena, přibylo ${r.added} pohybů` : 'Záloha sloučena, nic nového v ní nebylo', r.added > 0 ? { label: 'Vrátit', run: BG.undo } : undefined);
-      } catch (err) {
-        BG.toast(err.message || 'Zálohu se nepodařilo přečíst.');
-      }
+      const buf = fr.result;
+      const head = new Uint8Array(buf.slice(0, 64));
+      let i = 0;
+      while (i < head.length && (head[i] <= 32 || head[i] === 0xEF || head[i] === 0xBB || head[i] === 0xBF)) i++;
+      const isJSON = /\.json$/i.test(f.name) || head[i] === 0x7B; // {
+      if (isJSON) mergeJSON(new TextDecoder('utf-8').decode(buf));
+      else if (/\.pdf$/i.test(f.name) || (head[0] === 0x25 && head[1] === 0x50)) BG.toast('PDF výpis appka nepřečte. Stáhni si z bankovnictví výpis jako CSV.');
+      else startCSV(f.name, buf);
     };
     fr.onerror = () => BG.toast('Soubor se nepodařilo přečíst.');
-    fr.readAsText(f);
+    fr.readAsArrayBuffer(f);
+  }
+
+  function pickFile() { const i = $('#fileCsv'); i.value = ''; i.click(); }
+
+  $('#fileJson').addEventListener('change', e => handleFile(e.target.files && e.target.files[0]));
+
+  // přetažení souboru kamkoli do okna
+  let dragN = 0;
+  const hasFiles = e => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+  window.addEventListener('dragenter', e => { if (!hasFiles(e)) return; e.preventDefault(); dragN++; document.body.classList.add('dropping'); });
+  window.addEventListener('dragover', e => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('dragleave', e => { if (!hasFiles(e)) return; dragN = Math.max(0, dragN - 1); if (!dragN) document.body.classList.remove('dropping'); });
+  window.addEventListener('drop', e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault(); dragN = 0; document.body.classList.remove('dropping');
+    handleFile(e.dataTransfer.files[0]);
   });
 
   /* ========== import výpisu (CSV) ========== */
@@ -256,22 +315,7 @@
     ['cur', 'Měna'], ['dir', 'Směr platby'], ['id', 'ID transakce'], ['type', 'Typ platby'], ['acct', 'Číslo protiúčtu'], ['state', 'Stav'],
   ];
 
-  $('#fileCsv').addEventListener('change', e => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    const fr = new FileReader();
-    fr.onload = () => {
-      let a;
-      try { a = Imp.analyse(fr.result); } catch (err) { a = { error: 'Soubor se nepodařilo přečíst.' }; }
-      if (a.error) { BG.toast(a.error); return; }
-      IMP = { name: f.name, a, map: { ...a.map }, revive: false, mapOpen: a.needsMap };
-      close(dlgs.data);
-      renderImport();
-      open(dlgs.imp);
-    };
-    fr.onerror = () => BG.toast('Soubor se nepodařilo přečíst.');
-    fr.readAsArrayBuffer(f);
-  });
+  $('#fileCsv').addEventListener('change', e => handleFile(e.target.files && e.target.files[0]));
 
   function importPreview() {
     const m = IMP.map;
@@ -414,12 +458,25 @@
     if (!ms.length) {
       body = `<div class="panel" style="text-align:center"><div class="av" style="background:var(--green);margin:0 auto 10px">${K.icon('check')}</div><h2>Všechno je zařazené</h2><p class="cap" style="margin:6px 0 0">Nové pohyby z dalších importů appka zařadí podle toho, co ses ji naučil.</p></div>`;
     } else {
-      body = `<div class="callout" style="margin-top:0">Vyber u každého obchodníka kategorii. Přeřadí se všechny jeho pohyby a příště se zařadí samo. Nezařazeno: <b>${un.length}</b> pohybů, ${moneyRound(total)}.</div>
-        <div class="group">${ms.slice(0, 60).map(m => `<div class="row">${V.av('ostatni')}<div class="main"><div class="t">${esc(m.name)}</div><div class="s">${m.n}× · ${moneyRound(m.sum)} · ${fmtShort(m.last)}</div></div>
-          <select class="selpill" data-key="${esc(m.key)}" aria-label="Kategorie pro ${esc(m.name)}"><option value="">Zařadit…</option>${catOptions(['out', 'save'], '', ['ostatni'])}</select></div>`).join('')}</div>
-        ${ms.length > 60 ? `<div class="secfoot">A ještě ${ms.length - 60} dalších obchodníků. Po zařazení těchto se zobrazí.</div>` : ''}`;
+      var quick = topCats('out', 6, ['ostatni', 'bydleni', 'dane', 'pojisteni', 'energie']);
+      body = `<div class="callout" style="margin-top:0">Ťukni u obchodníka na kategorii. Přeřadí se všechny jeho pohyby a příště se zařadí samo. Nezařazeno: <b>${un.length}</b> pohybů, ${moneyRound(total)}.</div>
+        <div class="group triage">${ms.slice(0, 40).map(m => `<div class="trow"><div class="row">${V.av('ostatni')}<div class="main"><div class="t">${esc(m.name)}</div><div class="s">${m.n}× · ${moneyRound(m.sum)} · ${fmtShort(m.last)}</div></div>
+          <select class="selpill" data-key="${esc(m.key)}" aria-label="Jiná kategorie pro ${esc(m.name)}"><option value="">Jiná…</option>${catOptions(['out', 'save'], '', ['ostatni'])}</select></div>
+          <div class="chiprow" data-key="${esc(m.key)}">${quick.map(id => chip(id, false)).join('')}</div></div>`).join('')}</div>
+        ${ms.length > 40 ? `<div class="secfoot">A ještě ${ms.length - 40} dalších obchodníků. Po zařazení těchto se zobrazí.</div>` : ''}`;
     }
     dlg.innerHTML = K.sheetHTML({ title: 'Nezařazené', left: 'Hotovo', body });
+    const assign = (key, cat) => {
+      BG.snap();
+      const n = BG.setRule(key, cat, false, true);
+      BG.commit();
+      BG.toast(`${n} ${n === 1 ? 'pohyb' : 'pohybů'} → ${CAT[cat].name}`, { label: 'Vrátit', run: () => { BG.undo(); if (dlg.open) renderTriage(); } });
+      renderTriage();
+    };
+    $$('.chiprow[data-key]', dlg).forEach(row => row.addEventListener('click', e => {
+      const b = e.target.closest('[data-cat]');
+      if (b) assign(row.dataset.key, b.dataset.cat);
+    }));
     $$('select[data-key]', dlg).forEach(sl => sl.addEventListener('change', () => {
       if (!sl.value) return;
       const cat = sl.value;
@@ -525,7 +582,7 @@
   BG.ui.closeData = () => close(dlgs.data);
   BG.ui.dataMsg = t => { const m = $('#dataMsg'); if (m) m.textContent = t; };
   BG.ui.sync = () => {};
-  window.BGDlg = { openEntry, openMerch, openTriage, openRules, openLimit, suggestLimits, openData };
+  window.BGDlg = { openEntry, openMerch, openTriage, openRules, openLimit, suggestLimits, openData, pickFile, handleFile };
 
   BG.boot();
 })();

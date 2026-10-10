@@ -40,6 +40,11 @@ Dál: přidání, úprava a smazání s tlačítkem Vrátit, přihlášení pře
 záloha do JSON (slučuje se, nepřepisuje), export do CSV (středník, BOM, otevře se v Excelu), světlý a tmavý vzhled,
 mobil i offline (PWA).
 
+Ovládání na co nejméně klepnutí: název měsíce v hlavičce je zároveň výběr měsíce, na mobilu stačí swipe doleva/doprava.
+Na Přehledu je nahoře souhrn a „Co řešit“ (nezařazené, přečerpané limity, zbytečné výdaje), kategorie se rozbalí
+klepnutím přímo na místě, klepnutí na Příjmy/Výdaje otevře seznam. Zařazení i nový pohyb jdou jedním klepnutím na čip
+kategorie. Výpis (CSV) i zálohu (JSON) stačí přetáhnout do okna nebo nahrát jedním tlačítkem, appka pozná, co to je.
+
 Klávesy: `N` nový pohyb, `/` hledání, `1`–`5` záložky, `←` `→` měsíc.
 
 ## Data a soukromí
