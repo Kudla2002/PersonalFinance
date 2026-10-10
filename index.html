@@ -4,9 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Budgetovka</title>
-<meta name="description" content="Osobní rozpočet: měsíční příjmy, výdaje a spoření podle kategorií. Data zůstávají ve tvém prohlížeči, volitelně i na tvém Google Disku.">
-<meta name="theme-color" content="#F4F5F8" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0C0F15" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Osobní rozpočet: příjmy, výdaje a spoření po měsících, kategorie, obchodníci, pravidelné platby a import výpisu. Data zůstávají ve tvém prohlížeči, volitelně i na tvém Google Disku.">
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="robots" content="noindex">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -14,246 +15,56 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Budgetovka">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-<main class="page">
-
-  <header class="topbar">
-    <div class="monthnav">
-      <h1 class="month-title" id="monthTitle" aria-live="polite">Budgetovka</h1>
-      <div class="monthnav-ctrl" role="group" aria-label="Přepnout měsíc">
-        <button type="button" class="icon-btn" id="prevBtn" aria-label="Předchozí měsíc">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M14.5 6 8.5 12l6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <button type="button" class="icon-btn" id="nextBtn" aria-label="Další měsíc">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m9.5 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        <button type="button" class="text-btn" id="todayBtn">Tento měsíc</button>
-      </div>
-    </div>
-    <div class="actions">
-      <button type="button" class="sync" id="syncBtn" data-s="out" hidden>
-        <i class="sdot" aria-hidden="true"></i><span id="syncTxt">Přihlásit přes Google</span>
-      </button>
-      <button type="button" class="btn btn-ghost" id="dataBtn">Data</button>
-      <button type="button" class="btn btn-primary" id="addBtn">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
-        <span>Nová položka</span>
-      </button>
-    </div>
-  </header>
-
-  <div class="banner" id="demoBanner" hidden>
-    <p>Vidíš ukázková data. Nejsou tvoje, jen ukazují, jak appka vypadá s pohyby za půl roku.</p>
-    <button type="button" class="text-btn" id="demoClear">Smazat ukázková data</button>
-  </div>
-
-  <section class="empty" id="empty" hidden aria-labelledby="emptyTitle">
-    <div class="empty-bar" aria-hidden="true">
-      <span style="flex:34;background:var(--dk-bydleni)"></span>
-      <span style="flex:19;background:var(--dk-jidlo)"></span>
-      <span style="flex:9;background:var(--dk-doprava)"></span>
-      <span style="flex:6;background:var(--dk-sluzby)"></span>
-      <span style="flex:8;background:var(--dk-sporeni)"></span>
-      <span class="hatch" style="flex:24"></span>
-    </div>
-    <h2 id="emptyTitle">Začni první položkou</h2>
-    <p id="emptyText">Příjmy, výdaje a spoření se tu sečtou po měsících a rozdělí do kategorií. Data zůstávají jen v tomto prohlížeči.</p>
-    <div class="empty-actions">
-      <button type="button" class="btn btn-primary" id="emptyAdd">Přidat první položku</button>
-      <button type="button" class="btn btn-ghost" id="emptyDemo">Vyzkoušet na ukázkových datech</button>
-    </div>
-  </section>
-
-  <div id="content">
-
-    <section class="slab" aria-label="Přehled měsíce">
-      <div class="slab-top">
-        <div class="result">
-          <p class="result-label" id="resultLabel">Zbývá z příjmů</p>
-          <p class="result-num" id="resultNum"><span class="n">0</span><span class="cur">Kč</span></p>
-        </div>
-        <dl class="ledger" id="ledger">
-          <div class="ledger-row">
-            <dt>Příjmy</dt>
-            <dd id="lIn">0 Kč</dd>
-          </div>
-          <div class="ledger-subs" id="lInSubs"></div>
-          <div class="ledger-row">
-            <dt>Výdaje</dt>
-            <dd id="lOut">0 Kč</dd>
-          </div>
-          <div class="ledger-row">
-            <dt>Spoření a investice</dt>
-            <dd id="lSave">0 Kč</dd>
-          </div>
-          <div class="ledger-row ledger-rate">
-            <dt>Míra spoření</dt>
-            <dd id="lRate">–</dd>
-          </div>
-        </dl>
-      </div>
-
-      <div class="split">
-        <div class="split-head">
-          <span>Rozdělení příjmů</span>
-          <span id="splitScale"></span>
-        </div>
-        <div class="bar-wrap">
-          <div class="bar" id="bar" role="img" aria-label="Rozdělení příjmů"></div>
-          <div class="marker" id="marker" hidden><span>Příjmy</span></div>
-        </div>
-      </div>
-
-      <ul class="legend" id="legend" aria-label="Kategorie výdajů a spoření"></ul>
-      <p class="slab-empty" id="slabEmpty" hidden>V tomto měsíci zatím nic není.</p>
-    </section>
-
-    <div class="grid">
-
-      <section class="pohyby" aria-labelledby="txTitle">
-        <div class="sec-head">
-          <h2 id="txTitle">Pohyby</h2>
-          <div class="tools">
-            <label class="search">
-              <span class="sr">Hledat v pohybech</span>
-              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-              <input type="search" id="q" placeholder="Hledat" autocomplete="off">
-            </label>
-            <div class="seg" id="kindFilter" role="group" aria-label="Typ pohybu">
-              <button type="button" data-kind="all" aria-pressed="true">Vše</button>
-              <button type="button" data-kind="in" aria-pressed="false">Příjmy</button>
-              <button type="button" data-kind="out" aria-pressed="false">Výdaje</button>
-              <button type="button" data-kind="save" aria-pressed="false">Spoření</button>
-            </div>
-          </div>
-        </div>
-        <div id="activeFilter"></div>
-        <div id="txList"></div>
-      </section>
-
-      <aside class="trend" aria-labelledby="trendTitle">
-        <h2 id="trendTitle">Posledních 6 měsíců</h2>
-        <ul class="key" aria-hidden="true">
-          <li><i class="sw sw-in"></i>Příjmy</li>
-          <li><i class="sw sw-out"></i>Výdaje</li>
-        </ul>
-        <div class="tcols" id="tcols"></div>
-        <dl class="avg" id="avg"></dl>
-        <table class="sr" id="trendTable">
-          <caption>Příjmy a výdaje za posledních 6 měsíců</caption>
-          <thead><tr><th>Měsíc</th><th>Příjmy</th><th>Výdaje</th><th>Spoření</th></tr></thead>
-          <tbody></tbody>
-        </table>
-      </aside>
-
-    </div>
-  </div>
-
-</main>
-
-<!-- Přidat / upravit položku -->
-<dialog class="sheet" id="entryDlg" aria-labelledby="entryTitle">
-  <form id="entryForm" novalidate>
-    <header class="sheet-head">
-      <h2 id="entryTitle">Nová položka</h2>
-      <button type="button" class="icon-btn" id="entryClose" aria-label="Zavřít">
-        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      </button>
-    </header>
-
-    <fieldset class="kind" aria-label="Typ">
-      <label><input type="radio" name="kind" value="out" checked><span>Výdaj</span></label>
-      <label><input type="radio" name="kind" value="in"><span>Příjem</span></label>
-      <label><input type="radio" name="kind" value="save"><span>Spoření</span></label>
-    </fieldset>
-
-    <label class="amount">
-      <span class="sr">Částka v korunách</span>
-      <input type="text" id="fAmount" inputmode="decimal" autocomplete="off" placeholder="0" aria-describedby="fErr">
-      <span class="cur" aria-hidden="true">Kč</span>
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand"><img src="icons/icon-192.png" alt="" width="26" height="26"><span>Budgetovka</span></div>
+    <nav class="seg" id="segTop" role="tablist" aria-label="Sekce"></nav>
+    <span class="spacer"></span>
+    <label class="search" id="searchBox" hidden>
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+      <input id="q" type="search" placeholder="Hledat" autocomplete="off" aria-label="Hledat v pohybech">
     </label>
-
-    <fieldset class="cats">
-      <legend>Kategorie</legend>
-      <div class="chips" id="fCats"></div>
-    </fieldset>
-
-    <div class="row2">
-      <label class="field">
-        <span>Datum</span>
-        <input type="date" id="fDate" required>
-      </label>
-      <label class="field">
-        <span>Poznámka</span>
-        <input type="text" id="fNote" maxlength="80" autocomplete="off" placeholder="Např. Albert, nájem, ETF">
-      </label>
-    </div>
-
-    <p class="form-error" id="fErr" role="alert"></p>
-
-    <footer class="sheet-foot">
-      <button type="button" class="btn btn-danger" id="fDelete" hidden>Smazat</button>
-      <span class="spacer"></span>
-      <button type="button" class="btn btn-ghost" id="fCancel">Zrušit</button>
-      <button type="submit" class="btn btn-primary">Uložit</button>
-    </footer>
-  </form>
-</dialog>
-
-<!-- Data: záloha, export, ukázka -->
-<dialog class="sheet" id="dataDlg" aria-labelledby="dataTitle">
-  <header class="sheet-head">
-    <h2 id="dataTitle">Data</h2>
-    <button type="button" class="icon-btn" id="dataClose" aria-label="Zavřít">
-      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <button type="button" class="syncpill" id="syncBtn" data-s="out" hidden><i></i><span id="syncTxt">Přihlásit</span></button>
+    <button type="button" class="iconbtn" id="dataBtn" aria-label="Data, import a zálohy" title="Data, import a zálohy">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg>
     </button>
-  </header>
-  <section class="gbox" aria-labelledby="gTitle">
-    <h3 id="gTitle">Google Disk</h3>
-    <p id="gText"></p>
-    <div class="gbox-actions">
-      <button type="button" class="btn btn-primary" id="gLogin" hidden>Přihlásit přes Google</button>
-      <button type="button" class="btn btn-ghost" id="gSyncNow" hidden>Synchronizovat teď</button>
-      <button type="button" class="btn btn-danger" id="gLogout" hidden>Odhlásit</button>
-    </div>
-    <p class="gbox-link"><a href="privacy.html" target="_blank" rel="noopener">Zásady ochrany soukromí</a></p>
-  </section>
-  <p class="note" id="dataNote">Všechno je uložené jen v tomhle prohlížeči na tomhle zařízení. Občas si stáhni zálohu, ať o data nepřijdeš při vymazání prohlížeče nebo výměně telefonu.</p>
-  <ul class="data-actions">
-    <li>
-      <button type="button" class="btn btn-ghost" id="expJson">Stáhnout zálohu</button>
-      <span>Soubor JSON se všemi položkami.</span>
-    </li>
-    <li>
-      <label class="btn btn-ghost" for="impFile">Obnovit ze zálohy</label>
-      <input type="file" id="impFile" accept="application/json,.json" hidden>
-      <span>Nahradí aktuální data obsahem zálohy.</span>
-    </li>
-    <li>
-      <button type="button" class="btn btn-ghost" id="expCsv">Exportovat do CSV</button>
-      <span>Pro Excel nebo Numbers, oddělovač středník.</span>
-    </li>
-    <li>
-      <button type="button" class="btn btn-ghost" id="loadDemo">Načíst ukázková data</button>
-      <span>Půl roku vymyšlených pohybů na vyzkoušení.</span>
-    </li>
-    <li>
-      <button type="button" class="btn btn-danger" id="wipeBtn">Smazat všechna data</button>
-      <span id="wipeNote">Nejdřív si stáhni zálohu.</span>
-    </li>
-  </ul>
-  <div class="data-msg" id="dataMsg" role="status" aria-live="polite"></div>
-</dialog>
+    <button type="button" class="plus" id="addBtn" aria-label="Přidat pohyb" title="Přidat pohyb (N)">
+      <svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="stroke-width:2.4"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+  </div>
+</header>
 
-<div class="tip" id="tip" role="tooltip" hidden></div>
-<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<main class="wrap" id="view" aria-live="polite"></main>
 
+<nav class="tabbar" id="tabBottom" aria-label="Sekce"><div class="tabbar-in" role="tablist"></div></nav>
+
+<dialog id="entryDlg" aria-label="Pohyb"></dialog>
+<dialog id="dataDlg" aria-label="Data"></dialog>
+<dialog id="importDlg" aria-label="Import výpisu"></dialog>
+<dialog id="merchDlg" aria-label="Obchodník"></dialog>
+<dialog id="triageDlg" aria-label="Nezařazené pohyby"></dialog>
+<dialog id="rulesDlg" aria-label="Pravidla zařazení"></dialog>
+<dialog id="limitDlg" aria-label="Limit"></dialog>
+
+<input type="file" id="fileCsv" class="kfile" accept=".csv,.tsv,.txt,text/csv,text/plain" tabindex="-1" aria-hidden="true">
+<input type="file" id="fileJson" class="kfile" accept=".json,application/json" tabindex="-1" aria-hidden="true">
+
+<div id="toast" role="status" hidden></div>
+<div id="tip" role="tooltip" hidden></div>
+
+<noscript><p style="padding:24px;font-family:sans-serif">Budgetovka potřebuje zapnutý JavaScript.</p></noscript>
+
+<script src="rules.js"></script>
+<script src="cats.js"></script>
+<script src="analytics.js"></script>
+<script src="importer.js"></script>
 <script src="app.js"></script>
+<script src="kit.js"></script>
+<script src="views.js"></script>
+<script src="dialogs.js"></script>
 </body>
 </html>

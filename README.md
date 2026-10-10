@@ -7,15 +7,35 @@ Bez serveru, bez buildu. Data zůstávají ve tvém prohlížeči, volitelně i 
 
 ## Co umí
 
-- Přehled měsíce: kolik zbývá z příjmů, příjmy, výdaje, spoření a míra spoření.
-- Pruh příjmů: celý příjem rozdělený na kategorie výdajů, spoření a zbytek. Přesahují-li výdaje příjmy, pruh to ukáže značkou.
-- Kategorie jako filtr: klik na kategorii nebo zdroj příjmu zúží seznam pohybů.
-- Vývoj za 6 měsíců a průměrný příjem a výdaje. Klik na měsíc ho otevře.
-- Přidání, úprava a smazání s tlačítkem Vrátit.
-- Přihlášení přes Google a synchronizace mezi zařízeními přes soubor na Google Disku.
-- Záloha do JSON, obnova ze zálohy, export do CSV (středník, UTF-8 s BOM, otevře se rovnou v Excelu).
-- Světlý a tmavý vzhled podle systému, funguje na mobilu a offline (PWA, lze přidat na plochu).
-- Klávesy: `N` nová položka, `←` `→` přepnutí měsíce.
+Pět záložek (dole na mobilu, nahoře na počítači):
+
+- **Přehled**: kolik zbývá z příjmů, tempo útraty v měsíci proti průměru z minulých měsíců a odhad konce měsíce
+  (pevné platby jako nájem se do tempa nepočítají), příjmy, výdaje, spoření, míra spoření, koláč podle skupin,
+  kategorie s limity a změnou proti průměru, nejčastější obchodníci a postřehy (kolik jde na hospody a kavárny,
+  největší nárůst, největší platba, nejdražší den v týdnu, pravidelné platby, cíl spoření).
+- **Pohyby**: seznam po dnech, filtr příjem/výdaj/kategorie, hledání, celé období; podzáložka **Obchodníci**
+  (kolik, kolikrát, průměr; klik otevře detail s grafem a přeřazením všech plateb najednou).
+- **Kalendář**: teplotní mapa útrat po dnech měsíce, detail dne.
+- **Trendy**: 6 / 12 měsíců / vše, sloupce příjmy × výdaje, míra spoření, skupiny výdajů, tabulka kategorií po měsících.
+- **Plán**: měsíční limity na kategorie (návrh z průměru jedním klikem), cíl míry spoření, automaticky nalezené
+  pravidelné platby (měsíčně i ročně, i ukončené) s měsíčním součtem.
+
+31 kategorií ve 8 skupinách (hospoda, kavárny, rozvoz jídla, fitko, doprava, taxi, tabák…), ne jedna „zábava“.
+
+**Import výpisu** (ikona Data → Importovat výpis): CSV z banky (UTF-8 i Windows-1250, `;` `,` tabulátor).
+Sloupce se poznají podle názvů v hlavičce, jinak je přiřadíš ručně. Platby se zařadí podle obchodníka,
+duplicity (stejný den, částka, obchodník) se přeskočí, platby v cizí měně se vynechají. Čísla účtů, VS, KS
+a SS se do poznámek nepřebírají. Před importem je náhled. Import se dá vrátit tlačítkem Vrátit.
+Formáty bank jsou ověřené jen na ukázkových souborech (Fio, Air Bank, Revolut), ne na reálných exportech.
+
+**Pravidla**: když změníš kategorii a necháš zapnuté „Pamatovat“, appka si obchodníka zapamatuje, přeřadí
+už existující platby a příště ho zařadí sama. Pravidla se synchronizují s Diskem a jdou zrušit (Data → Pravidla).
+
+Dál: přidání, úprava a smazání s tlačítkem Vrátit, přihlášení přes Google a synchronizace mezi zařízeními,
+záloha do JSON (slučuje se, nepřepisuje), export do CSV (středník, BOM, otevře se v Excelu), světlý a tmavý vzhled,
+mobil i offline (PWA).
+
+Klávesy: `N` nový pohyb, `/` hledání, `1`–`5` záložky, `←` `→` měsíc.
 
 ## Data a soukromí
 
@@ -71,15 +91,17 @@ Soubor `Budgetovka – data.json` i pole `tx` v záloze:
 
 ```json
 {
-  "app": "budgetovka", "v": 2,
-  "tx": [{ "id": "…", "date": "2026-10-10", "cat": "jidlo", "amount": 125050, "note": "Albert", "at": 1760000000000, "u": 1760000000000 }],
-  "tomb": { "id-smazane-polozky": 1760000100000 }
+  "app": "budgetovka", "v": 3,
+  "tx": [{ "id": "…", "date": "2026-10-10", "cat": "potraviny", "amount": 125050, "note": "Albert", "at": 1760000000000, "u": 1760000000000 }],
+  "tomb": { "id-smazane-polozky": 1760000100000 },
+  "meta": { "r:albert": { "v": "potraviny", "u": 1760000000000 }, "l:hospoda": { "v": 150000, "u": 1760000000000 }, "g:rate": { "v": 20, "u": 1760000000000 } }
 }
 ```
 
 `amount` je v haléřích (125050 = 1 250,50 Kč), `u` je čas poslední změny, `tomb` jsou smazané položky.
-Kategorie a jejich druh (příjem, výdaj, spoření) jsou v poli `CATS` na začátku `app.js`.
-Při přidání kategorie zvyš `SCHEMA`, ať starší verze appky nepřepíše soubor, kterému nerozumí.
+`meta` drží pravidla zařazení (`r:<obchodník>`, u příjmů s `+` na konci), měsíční limity (`l:<kategorie>`, haléře)
+a cíl spoření (`g:rate`, %); hodnota `null` znamená smazáno. Kategorie jsou v `cats.js`.
+Při přidání kategorie nebo změně formátu zvyš `SCHEMA` v `app.js`, ať starší verze appky nepřepíše soubor, kterému nerozumí.
 
 ## Úpravy
 
@@ -89,7 +111,14 @@ Při přidání kategorie zvyš `SCHEMA`, ať starší verze appky nepřepíše 
 |---|---|
 | `index.html` | struktura stránky a okna |
 | `styles.css` | vzhled, barvy jako proměnné na začátku, světlé i tmavé |
-| `app.js` | data, výpočty, vykreslení, přihlášení a synchronizace |
+| `rules.js` | pravidla zařazení plateb do kategorií, klíč obchodníka |
+| `cats.js` | kategorie, skupiny, barvy, ikony |
+| `analytics.js` | součty, průměry, tempo měsíce, pravidelné platby, kalendář |
+| `importer.js` | čtení CSV z banky, detekce sloupců, odstranění duplicit |
+| `app.js` | data, mutace, export, přihlášení a synchronizace s Diskem |
+| `kit.js` | ikony, grafy (SVG), společné prvky oken |
+| `views.js` | záložky Přehled, Pohyby, Kalendář, Trendy, Plán |
+| `dialogs.js` | okna: pohyb, data, import, obchodník, nezařazené, pravidla, limity |
 | `privacy.html` | zásady ochrany soukromí (odkaz z okna Data a z Google Cloud) |
 | `sw.js` | offline režim; při změně seznamu souborů zvyš `CACHE` |
 
@@ -97,7 +126,12 @@ Nasazení je přes GitHub Pages z větve `main`, změna je hotová po pushi.
 
 ## Co by šlo přidat
 
-- Opakující se položky (nájem, splátka, předplatné).
-- Import výpisu z banky (CSV) s automatickým zařazením do kategorií.
-- Měsíční limity na kategorie.
+- Import PDF výpisu přímo v appce (teď jen CSV).
 - Vlastní kategorie.
+- Rozpočet po měsících (ne jen jeden limit na kategorii).
+- Kurzy cizích měn (teď se platby v cizí měně při importu vynechají).
+
+## Osobní data nepatří do repa
+
+Repo je veřejné. Výpisy, zálohy (`budgetovka-data.json`) ani exporty sem nikdy necommituj. Appka je záměrně napsaná tak, že
+žádná data v kódu nejsou (kromě vymyšlených ukázkových dat v `app.js`).

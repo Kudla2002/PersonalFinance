@@ -1,0 +1,8 @@
+# Osobní data nepatří do veřejného repa
+budgetovka-data*.json
+Budgetovka*data*.json
+*.csv
+*.pdf
+vypis*
+*.bak
+node_modules/

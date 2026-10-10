@@ -1,6 +1,6 @@
-/* Budgetovka: osobní rozpočet. Bez serveru a bez buildu.
-   Data jsou v localStorage tohoto prohlížeče. Po přihlášení přes Google se zrcadlí do souboru
-   na tvém Google Disku a slučují mezi zařízeními. Částky se ukládají v haléřích. */
+/* Budgetovka: jádro. Data jsou v localStorage tohoto prohlížeče. Po přihlášení přes Google se zrcadlí
+   do souboru na tvém Google Disku a slučují mezi zařízeními. Částky se ukládají v haléřích.
+   Vzhled je ve views.js, tady je jen práce s daty, synchronizace a rozhraní `window.BG`, které si zobrazení bere. */
 (() => {
   'use strict';
 
@@ -12,33 +12,17 @@
     // drive.file: appka vidí jen soubor, který sama vytvořila, ne zbytek Disku
     scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
   };
-  const SCHEMA = 2;
+  const SCHEMA = 3;
   const TOMB_TTL = 120 * 864e5;
-
   const STORE_KEY = 'budgetovka.v1';
   const MINUS = '−';
-  const NBSP = ' ';
+  const NBSP = ' ';
 
-  /* ---------- kategorie ---------- */
-
-  const CATS = [
-    { id: 'prace',    name: 'Provize a mzda',      kind: 'in' },
-    { id: 'vedlejsi', name: 'Vedlejší příjem',     kind: 'in' },
-    { id: 'prijem',   name: 'Ostatní příjem',      kind: 'in' },
-    { id: 'bydleni',  name: 'Bydlení',             kind: 'out' },
-    { id: 'jidlo',    name: 'Jídlo',               kind: 'out' },
-    { id: 'doprava',  name: 'Doprava',             kind: 'out' },
-    { id: 'zdravi',   name: 'Zdraví a sport',      kind: 'out' },
-    { id: 'zabava',   name: 'Zábava a volný čas',  kind: 'out' },
-    { id: 'sluzby',   name: 'Služby a předplatné', kind: 'out' },
-    { id: 'studium',  name: 'Studium',             kind: 'out' },
-    { id: 'dane',     name: 'Daně a odvody',       kind: 'out' },
-    { id: 'ostatni',  name: 'Ostatní výdaje',      kind: 'out' },
-    { id: 'sporeni',  name: 'Spoření a investice', kind: 'save' },
-  ];
-  const CAT = Object.fromEntries(CATS.map(c => [c.id, c]));
-  const KIND_NAME = { in: 'Příjem', out: 'Výdaj', save: 'Spoření' };
-  const catColor = id => (CAT[id].kind === 'in' ? null : `var(--c-${id})`);
+  const { CATS, CAT, GROUPS, GRP, ALIAS } = window.BudgetCats;
+  const Rules = window.BudgetRules;
+  const An = window.BudgetAnalytics;
+  const Imp = window.BudgetImport;
+  An.init(CAT);
 
   /* ---------- pomocné funkce ---------- */
 
@@ -50,12 +34,21 @@
   const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2, 10));
 
   const nf0 = new Intl.NumberFormat('cs-CZ', { maximumFractionDigits: 0 });
+  const nf1 = new Intl.NumberFormat('cs-CZ', { maximumFractionDigits: 1 });
   const nf2 = new Intl.NumberFormat('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const numStr = minor => {
     const abs = Math.abs(minor);
     return abs % 100 === 0 ? nf0.format(abs / 100) : nf2.format(abs / 100);
   };
-  const money = minor => numStr(minor) + NBSP + 'Kč';
+  const numRound = minor => nf0.format(Math.round(Math.abs(minor) / 100));
+  const money = minor => (minor < 0 ? MINUS : '') + numStr(minor) + NBSP + 'Kč';
+  const moneyRound = minor => (Math.round(minor / 100) < 0 ? MINUS : '') + numRound(minor) + NBSP + 'Kč';
+  // do grafů: 1 250 -> 1,3 tis., 2 400 000 -> 2,4 mil.
+  const compact = minor => {
+    const kc = Math.abs(minor) / 100;
+    const s = kc >= 1e6 ? nf1.format(kc / 1e6) + NBSP + 'mil.' : kc >= 10000 ? nf0.format(kc / 1000) + NBSP + 'tis.' : kc >= 1000 ? nf1.format(kc / 1000) + NBSP + 'tis.' : nf0.format(kc);
+    return (minor < 0 ? MINUS : '') + s;
+  };
   const pctOf = (v, base) => (base > 0 ? v / base * 100 : 0);
   const pctText = (v, base) => {
     const p = pctOf(v, base);
@@ -65,43 +58,68 @@
   const toISO = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const todayISO = () => toISO(new Date());
   const dateOf = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d); };
-  const shiftYM = (ym, delta) => {
-    const [y, m] = ym.split('-').map(Number);
-    const d = new Date(y, m - 1 + delta, 1);
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
-  };
-  const daysIn = ym => { const [y, m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+  const shiftYM = An.shiftYM;
+  const daysIn = An.daysIn;
   const fmtMonth = ym => cap(new Intl.DateTimeFormat('cs-CZ', { month: 'long', year: 'numeric' }).format(dateOf(ym + '-01')));
+  const fmtMonthName = ym => cap(new Intl.DateTimeFormat('cs-CZ', { month: 'long' }).format(dateOf(ym + '-01')));
   const fmtMonthShort = ym => new Intl.DateTimeFormat('cs-CZ', { month: 'short' }).format(dateOf(ym + '-01')).replace('.', '');
   const fmtDay = iso => cap(new Intl.DateTimeFormat('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long' }).format(dateOf(iso)));
-
+  const fmtDate = iso => `${+iso.slice(8, 10)}.${NBSP}${+iso.slice(5, 7)}.${NBSP}${iso.slice(0, 4)}`;
+  const fmtShort = iso => `${+iso.slice(8, 10)}.${NBSP}${+iso.slice(5, 7)}.`;
   const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const ui = {}; // zobrazení si sem zaregistruje funkce: render, openData, closeData, dataMsg
+
+  /* ---------- toast ---------- */
+
+  const toastEl = $('#toast');
+  let toastTimer = 0;
+  function toast(msg, action) {
+    if (!toastEl) return;
+    clearTimeout(toastTimer);
+    toastEl.textContent = '';
+    const span = document.createElement('span');
+    span.textContent = msg;
+    toastEl.append(span);
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = action.label;
+      b.addEventListener('click', () => { action.run(); toastEl.hidden = true; });
+      toastEl.append(b);
+    }
+    toastEl.hidden = false;
+    toastTimer = setTimeout(() => { toastEl.hidden = true; }, action ? 7000 : 3600);
+  }
 
   /* ---------- data ---------- */
 
   /* Každá položka má čas poslední změny `u`. Smazané položky se pamatují v `tomb` (id → čas smazání),
-     aby smazání na jednom zařízení nevrátilo druhé při synchronizaci. */
+     aby smazání na jednom zařízení nevrátilo druhé při synchronizaci. Nastavení (pravidla zařazení,
+     limity, cíl spoření) je v `meta` jako { klíč: { v: hodnota, u: čas } }, hodnota null = zrušeno. */
   let tx = [];
   let tomb = {};
+  let meta = {};
   let undoSnapshot = null;
 
-  const ui = { ym: todayISO().slice(0, 7), kind: 'all', cat: null, q: '' };
+  const fixCat = c => ALIAS[c] || c;
 
   function sanitize(list) {
     if (!Array.isArray(list)) return { items: [], skipped: 0 };
     const items = [];
     let skipped = 0;
     for (const t of list) {
+      const cat = t && fixCat(t.cat);
       const ok = t && typeof t === 'object'
         && typeof t.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(t.date)
-        && CAT[t.cat]
+        && CAT[cat]
         && Number.isFinite(t.amount) && t.amount > 0 && t.amount < 1e12;
       if (!ok) { skipped++; continue; }
       const at = Number.isFinite(t.at) ? t.at : 0;
       items.push({
         id: t.id ? String(t.id) : uid(),
         date: t.date,
-        cat: t.cat,
+        cat,
         amount: Math.round(t.amount),
         note: String(t.note || '').slice(0, 80),
         at,
@@ -121,22 +139,49 @@
     return out;
   }
 
+  /* r:<klíč obchodníka> -> id kategorie, l:<kategorie> -> měsíční limit v haléřích, g:rate -> cílová míra úspor v % */
+  function metaValue(k, v) {
+    if (v == null) return null;
+    if (k.startsWith('r:')) { const c = fixCat(v); return CAT[c] ? c : undefined; }
+    if (k.startsWith('l:')) return Number.isFinite(v) && v > 0 && v < 1e11 ? Math.round(v) : undefined;
+    if (k === 'g:rate') return Number.isFinite(v) && v >= 0 && v <= 100 ? Math.round(v) : undefined;
+    return undefined;
+  }
+
+  function sanitizeMeta(obj) {
+    const out = {};
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return out;
+    const cutoff = Date.now() - TOMB_TTL;
+    for (const [k, m] of Object.entries(obj)) {
+      if (!/^(?:r:.{1,90}|l:[a-z_]{1,30}|g:[a-z_]{1,30})$/.test(k) || !m || typeof m !== 'object') continue;
+      if (!(Number.isFinite(m.u) && m.u > 0)) continue;
+      let key = k;
+      if (k.startsWith('l:')) key = 'l:' + fixCat(k.slice(2));
+      const v = metaValue(key, m.v);
+      if (v === undefined) continue;
+      if (v === null && m.u < cutoff) continue;
+      if (key !== k && out[key] && out[key].u >= m.u) continue;
+      out[key] = { v, u: m.u };
+    }
+    return out;
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(STORE_KEY);
-      if (!raw) return { tx: [], tomb: {} };
+      if (!raw) return { tx: [], tomb: {}, meta: {} };
       const j = JSON.parse(raw);
-      return { tx: sanitize(j.tx).items, tomb: sanitizeTomb(j.tomb) };
+      return { tx: sanitize(j.tx).items, tomb: sanitizeTomb(j.tomb), meta: sanitizeMeta(j.meta) };
     } catch (e) {
       console.warn('Budgetovka: data se nepodařilo načíst', e);
-      return { tx: [], tomb: {} };
+      return { tx: [], tomb: {}, meta: {} };
     }
   }
 
   // sync = false u zápisů, které vznikly samotnou synchronizací
   function persist(sync = true) {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ v: SCHEMA, tx, tomb }));
+      localStorage.setItem(STORE_KEY, JSON.stringify({ v: SCHEMA, tx, tomb, meta }));
       if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     } catch (e) {
       toast('Data se nepodařilo uložit. Zkontroluj, jestli prohlížeč neblokuje úložiště.');
@@ -146,15 +191,20 @@
     return true;
   }
 
+  const renderAll = () => { if (ui.render) ui.render(); };
+  const commit = () => { const ok = persist(); renderAll(); return ok; };
+
   /* ---------- změny dat (každá si zapíše čas, aby šla sloučit) ---------- */
 
   const stamp = prev => Math.max(Date.now(), (prev || 0) + 1);
   const sameContent = (a, b) => a.date === b.date && a.cat === b.cat && a.amount === b.amount && a.note === b.note;
-  const snapshot = () => tx.map(t => ({ ...t }));
+  const snapshot = () => ({ tx: tx.map(t => ({ ...t })), meta: JSON.parse(JSON.stringify(meta)) });
 
   function addItem(data) {
     const now = Date.now();
-    tx.push({ id: uid(), ...data, at: now, u: now });
+    const t = { id: uid(), ...data, at: now, u: now };
+    tx.push(t);
+    return t;
   }
 
   function editItem(t, data) {
@@ -176,7 +226,7 @@
     tx.push({ ...t, u });
   }
 
-  // Nahradí všechna data seznamem (import, vymazání, vrácení). Co v seznamu chybí, se smaže i jinde.
+  // Nahradí všechna data seznamem (vymazání, vrácení). Co v seznamu chybí, se smaže i jinde.
   function replaceAll(list) {
     const now = Date.now();
     const old = new Map(tx.map(t => [t.id, t]));
@@ -194,16 +244,72 @@
     tx = next;
   }
 
-  const inMonth = ym => tx.filter(t => t.date.startsWith(ym));
+  function setMeta(k, v) {
+    const prev = meta[k];
+    if ((prev ? prev.v : null) === (v == null ? null : v)) return false;
+    if (v == null && !prev) return false;
+    meta[k] = { v: v == null ? null : v, u: stamp(prev && prev.u) };
+    return true;
+  }
+  const getMeta = k => (meta[k] ? meta[k].v : null);
 
-  function summarize(list) {
-    const s = { in: 0, out: 0, save: 0, byCat: {} };
-    for (const t of list) {
-      s[CAT[t.cat].kind] += t.amount;
-      s.byCat[t.cat] = (s.byCat[t.cat] || 0) + t.amount;
+  function limits() {
+    const out = {};
+    for (const [k, m] of Object.entries(meta)) if (k.startsWith('l:') && m.v != null && CAT[k.slice(2)]) out[k.slice(2)] = m.v;
+    return out;
+  }
+  function target() { return getMeta('g:rate'); }
+
+  // pravidla zařazení pro Rules.categorize: { klíč: { c } }, příjmy mají klíč s plusem na konci
+  function userRules() {
+    const out = {};
+    for (const [k, m] of Object.entries(meta)) if (k.startsWith('r:') && m.v) out[k.slice(2)] = { c: m.v };
+    return out;
+  }
+  const ruleCount = () => Object.keys(userRules()).length;
+
+  const noteKey = t => { const b = An.baseNote(t.note); return Rules.merchantKey(b) || b.toLowerCase(); };
+  const isIn = t => CAT[t.cat].kind === 'in';
+
+  /* Zapamatuje, že obchodník patří do kategorie, a (volitelně) přeřadí i dosavadní pohyby.
+     Vrací počet přeřazených pohybů. */
+  function setRule(key, cat, income, apply) {
+    if (!key || !CAT[cat]) return 0;
+    setMeta('r:' + (income ? key + '+' : key), cat);
+    let n = 0;
+    if (apply) {
+      for (const t of tx) {
+        if (t.demo || t.cat === cat || isIn(t) !== income || noteKey(t) !== key) continue;
+        editItem(t, { cat });
+        n++;
+      }
     }
-    s.left = s.in - s.out - s.save;
-    return s;
+    return n;
+  }
+  function clearRule(key, income) { return setMeta('r:' + (income ? key + '+' : key), null); }
+
+  /* Kolik pohybů by se přeřadilo (pro nápovědu v okně). */
+  function countSameMerchant(key, income, exceptCat) {
+    let n = 0;
+    for (const t of tx) if (!t.demo && isIn(t) === income && noteKey(t) === key && t.cat !== exceptCat) n++;
+    return n;
+  }
+
+  /* Vloží nové pohyby z importu (už zkontrolované na duplicity v Imp.build).
+     Dříve smazaný pohyb se vrací jen výslovně (revive) a s novějším časem, aby přebil náhrobek. */
+  function addMany(items) {
+    const now = Date.now();
+    let n = 0;
+    const have = new Set(tx.map(t => t.id));
+    for (const it of items) {
+      if (have.has(it.id)) continue;
+      let u = now;
+      if (Object.prototype.hasOwnProperty.call(tomb, it.id)) { u = stamp(tomb[it.id]); delete tomb[it.id]; }
+      tx.push({ id: it.id, date: it.date, cat: it.cat, amount: it.amount, note: it.note, at: now, u });
+      have.add(it.id);
+      n++;
+    }
+    return n;
   }
 
   /* ---------- ukázková data ---------- */
@@ -222,7 +328,7 @@
     const out = [];
     const today = todayISO();
     const thisYM = today.slice(0, 7);
-    for (let i = 5; i >= 0; i--) {
+    for (let i = 7; i >= 0; i--) {
       const ym = shiftYM(thisYM, -i);
       const [y, m] = ym.split('-').map(Number);
       const r = rng(y * 100 + m);
@@ -239,590 +345,61 @@
         out.push({ id: uid(), date, cat, amount: Math.round(kc * 100), note, at: out.length, demo: true });
       };
 
-      add(1, 'bydleni', 15800, 'Nájem a energie');
-      add(5, 'zdravi', 890, 'Posilovna');
-      add(7, 'sluzby', 649, 'Telefon');
-      add(7, 'sluzby', 169, 'Hudba');
-      add(8, 'sluzby', 520, 'Předplatné AI');
+      add(1, 'bydleni', 15800, 'Nájem');
+      add(3, 'energie', between(1700, 2300, 10), 'Energie');
+      add(7, 'energie', 649, 'Telefon');
+      add(9, 'sport', 890, 'Posilovna');
+      add(7, 'predplatne', 169, 'Spotify');
+      add(8, 'predplatne', 520, 'Předplatné AI');
+      add(12, 'predplatne', 259, 'Netflix');
       add(12, 'prace', between(34000, 62000, 100), 'Provize');
       if (r() > 0.5) add(21, 'vedlejsi', between(12000, 38000, 100), 'Realitní provize');
       add(6, 'sporeni', 5000, 'ETF, pravidelná investice');
       add(6, 'sporeni', 1000, 'Penzijní spoření');
       add(8, 'dane', 4700, 'Zálohy OSVČ');
+      add(15, 'pojisteni', 1350, 'Pojištění auta');
       if (r() > 0.6) add(3 + Math.floor(r() * 20), 'studium', between(300, 1800, 10), pick(['Skripta', 'Kurz', 'Kniha']));
 
-      const foods = 9 + Math.floor(r() * 5);
-      for (let k = 0; k < foods; k++) add(1 + Math.floor(r() * last), 'jidlo', between(90, 1300, 10), pick(['Albert', 'Lidl', 'Billa', 'Oběd', 'Rohlík', 'Kavárna', 'Wolt']));
-      for (let k = 0; k < 2; k++) add(2 + Math.floor(r() * (last - 2)), 'doprava', between(900, 1900, 10), 'Benzín');
+      const shops = 8 + Math.floor(r() * 5);
+      for (let k = 0; k < shops; k++) add(1 + Math.floor(r() * last), 'potraviny', between(90, 1300, 10), pick(['Albert', 'Lidl', 'Billa', 'Rohlík', 'Kaufland']));
+      for (let k = 0; k < 6; k++) add(1 + Math.floor(r() * last), 'restaurace', between(120, 480, 10), pick(['Oběd, bistro', 'KFC', 'Pizzerie', 'Burger']));
+      for (let k = 0; k < 5; k++) add(1 + Math.floor(r() * last), 'kavarna', between(70, 190, 10), pick(['Starbucks', 'Kavárna Moravská', 'Costa Coffee']));
+      for (let k = 0; k < 3; k++) add(1 + Math.floor(r() * last), 'hospoda', between(200, 900, 10), pick(['Pivnice U Mostu', 'Bar Šalanda', 'Hospoda U Dvou']));
+      for (let k = 0; k < 3; k++) add(1 + Math.floor(r() * last), 'rozvoz', between(250, 650, 10), 'Wolt');
+      for (let k = 0; k < 2; k++) add(2 + Math.floor(r() * (last - 2)), 'auto', between(900, 1900, 10), 'Benzín OMV');
+      for (let k = 0; k < 3; k++) add(1 + Math.floor(r() * last), 'taxi', between(100, 320, 10), 'Bolt');
       add(2, 'doprava', 550, 'Jízdenka IDS JMK');
-      const fun = 2 + Math.floor(r() * 3);
-      for (let k = 0; k < fun; k++) add(1 + Math.floor(r() * last), 'zabava', between(200, 1600, 10), pick(['Kino', 'Večeře s přáteli', 'Koncert', 'Hra']));
-      if (r() > 0.5) add(1 + Math.floor(r() * last), 'zdravi', between(150, 900, 10), 'Lékárna');
+      const fun = 1 + Math.floor(r() * 3);
+      for (let k = 0; k < fun; k++) add(1 + Math.floor(r() * last), 'zabava', between(200, 1600, 10), pick(['Kino', 'Koncert', 'Hra', 'Bowling']));
+      if (r() > 0.5) add(1 + Math.floor(r() * last), 'zdravi', between(150, 900, 10), 'Lékárna Dr. Max');
+      if (r() > 0.5) add(1 + Math.floor(r() * last), 'pece', between(250, 700, 10), 'Barber');
+      if (r() > 0.4) add(1 + Math.floor(r() * last), 'nakupy', between(300, 2400, 10), pick(['Alza', 'Zalando', 'H&M']));
     }
     return out;
   }
 
-  /* ---------- tooltip a toast ---------- */
+  /* ---------- export ---------- */
 
-  const tipEl = $('#tip');
-  let slabTips = {};
-  let trendTips = {};
-
-  function showTip(el) {
-    const html = slabTips[el.dataset.tip] || trendTips[el.dataset.tip];
-    if (!html) return;
-    tipEl.innerHTML = html;
-    tipEl.hidden = false;
-    const r = el.getBoundingClientRect();
-    const w = tipEl.offsetWidth;
-    const h = tipEl.offsetHeight;
-    let left = r.left + r.width / 2 - w / 2;
-    left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
-    let top = r.top - h - 10;
-    if (top < 8) top = r.bottom + 10;
-    tipEl.style.left = left + 'px';
-    tipEl.style.top = top + 'px';
-  }
-  const hideTip = () => { tipEl.hidden = true; };
-
-  document.addEventListener('mouseover', e => {
-    const el = e.target.closest('[data-tip]');
-    if (el) showTip(el);
-  });
-  document.addEventListener('mouseout', e => {
-    if (e.target.closest('[data-tip]')) hideTip();
-  });
-  document.addEventListener('focusin', e => {
-    const el = e.target.closest('[data-tip]');
-    if (el) showTip(el);
-  });
-  document.addEventListener('focusout', e => {
-    if (e.target.closest('[data-tip]')) hideTip();
-  });
-  window.addEventListener('scroll', hideTip, { passive: true });
-
-  const toastEl = $('#toast');
-  let toastTimer = 0;
-  function toast(msg, action) {
-    clearTimeout(toastTimer);
-    toastEl.textContent = '';
-    const span = document.createElement('span');
-    span.textContent = msg;
-    toastEl.append(span);
-    if (action) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = action.label;
-      b.addEventListener('click', () => { action.run(); toastEl.hidden = true; });
-      toastEl.append(b);
-    }
-    toastEl.hidden = false;
-    toastTimer = setTimeout(() => { toastEl.hidden = true; }, action ? 7000 : 3200);
+  function exportJSON() {
+    return JSON.stringify({ app: 'budgetovka', v: SCHEMA, exportedAt: new Date().toISOString(), ...localDoc() }, null, 1);
   }
 
-  /* ---------- vykreslení ---------- */
-
-  function renderHeader() {
-    $('#monthTitle').textContent = fmtMonth(ui.ym);
-    const nowYM = todayISO().slice(0, 7);
-    $('#todayBtn').disabled = ui.ym === nowYM;
+  function csvCell(v) {
+    const s = String(v);
+    // buňka začínající = + - @ by se v Excelu mohla spustit jako vzorec
+    const safe = /^[=+@\t\r]/.test(s) ? "'" + s : s;
+    return /[;"\n\r]/.test(safe) ? '"' + safe.replace(/"/g, '""') + '"' : safe;
   }
-
-  function renderSlab() {
-    const list = inMonth(ui.ym);
-    const s = summarize(list);
-    const neg = s.left < 0;
-
-    const result = $('.result');
-    result.classList.toggle('neg', neg);
-    $('#resultLabel').textContent = neg ? 'Přečerpáno' : 'Zbývá z příjmů';
-    $('#resultNum').innerHTML = `<span class="n">${neg ? MINUS : ''}${esc(numStr(s.left))}</span><span class="cur">Kč</span>`;
-
-    $('#lIn').textContent = money(s.in);
-    $('#lOut').textContent = (s.out ? MINUS : '') + money(s.out);
-    $('#lSave').textContent = (s.save ? MINUS : '') + money(s.save);
-    $('#lRate').textContent = s.in > 0 ? Math.round(s.save / s.in * 100) + ' %' : '–';
-
-    // zdroje příjmů, jen když jsou aspoň dva
-    const sources = CATS.filter(c => c.kind === 'in' && s.byCat[c.id]);
-    $('#lInSubs').innerHTML = sources.length > 1
-      ? sources.map(c => `<button type="button" class="ledger-sub" data-cat="${c.id}" aria-pressed="${ui.cat === c.id}"><span>${esc(c.name)}</span><span>${esc(money(s.byCat[c.id]))}</span></button>`).join('')
-      : '';
-
-    // pruh příjmů
-    const outCats = CATS.filter(c => c.kind === 'out' && s.byCat[c.id]).sort((a, b) => s.byCat[b.id] - s.byCat[a.id]);
-    const segs = outCats.map(c => ({ id: c.id, name: c.name, v: s.byCat[c.id] }));
-    if (s.save) segs.push({ id: 'sporeni', name: CAT.sporeni.name, v: s.save });
-    const flow = s.out + s.save;
-    const base = Math.max(s.in, flow);
-    const rest = Math.max(0, s.in - flow);
-
-    hideTip();
-    slabTips = {};
-    let html = '';
-    for (const g of segs) {
-      const key = 'seg-' + g.id;
-      slabTips[key] = `<strong>${esc(g.name)}</strong><div class="t-row"><span>Částka</span><span>${esc(money(g.v))}</span></div><div class="t-row"><span>Z příjmů</span><span>${pctText(g.v, base)}</span></div>`;
-      html += `<span class="bs" data-tip="${key}" style="flex:${g.v} 1 0;background:var(--c-${g.id})"></span>`;
-    }
-    if (rest > 0) {
-      slabTips['seg-rest'] = `<strong>Zbývá</strong><div class="t-row"><span>Částka</span><span>${esc(money(rest))}</span></div><div class="t-row"><span>Z příjmů</span><span>${pctText(rest, base)}</span></div>`;
-      html += `<span class="bs rest" data-tip="seg-rest" style="flex:${rest} 1 0"></span>`;
-    }
-    $('#bar').innerHTML = html;
-
-    const bar = $('#bar');
-    const marker = $('#marker');
-    if (flow > s.in && s.in > 0) {
-      marker.hidden = false;
-      marker.style.left = (s.in / base * 100) + '%';
-    } else {
-      marker.hidden = true;
-    }
-
-    const scale = $('#splitScale');
-    if (!list.length) scale.textContent = '';
-    else if (flow > s.in) scale.textContent = s.in > 0 ? 'Výdaje a spoření přesahují příjmy' : 'Příjmy zatím chybí';
-    else scale.textContent = '100 % = ' + money(base);
-
-    const summary = segs.slice(0, 3).map(g => `${g.name} ${pctText(g.v, base)}`).join(', ');
-    bar.setAttribute('aria-label', list.length ? `Rozdělení příjmů ${money(s.in)}: ${summary}${rest > 0 ? `, zbývá ${money(rest)}` : ''}` : 'Rozdělení příjmů, zatím prázdné');
-
-    // legenda
-    $('#legend').innerHTML = segs.map(g => {
-      const pressed = ui.cat === g.id;
-      return `<li><button type="button" class="leg" data-cat="${g.id}" aria-pressed="${pressed}"><i class="dot" style="--dot:var(--c-${g.id})"></i><span class="name">${esc(g.name)}</span><span class="val">${esc(money(g.v))}</span><span class="pct">${pctText(g.v, base)}</span></button></li>`;
-    }).join('');
-
-    $('#slabEmpty').hidden = list.length > 0;
-    $('.split').hidden = list.length === 0;
-    $('#legend').hidden = segs.length === 0;
-  }
-
-  function renderTrend() {
-    const nowYM = todayISO().slice(0, 7);
-    let end = ui.ym > nowYM ? ui.ym : nowYM;
-    if (ui.ym < shiftYM(end, -5)) end = ui.ym;
-    const months = Array.from({ length: 6 }, (_, i) => shiftYM(end, i - 5));
-    const data = months.map(ym => {
-      const list = inMonth(ym);
-      return { ym, n: list.length, ...summarize(list) };
-    });
-    const max = Math.max(1, ...data.flatMap(d => [d.in, d.out]));
-
-    const h = v => (v > 0 ? Math.max(2, v / max * 100) : 0);
-    hideTip();
-    trendTips = {};
-    $('#tcols').innerHTML = data.map(d => {
-      const key = 'm-' + d.ym;
-      trendTips[key] = `<strong>${esc(fmtMonth(d.ym))}</strong>`
-        + `<div class="t-row"><span>Příjmy</span><span>${esc(money(d.in))}</span></div>`
-        + `<div class="t-row"><span>Výdaje</span><span>${esc(money(d.out))}</span></div>`
-        + `<div class="t-row"><span>Spoření</span><span>${esc(money(d.save))}</span></div>`
-        + `<div class="t-row"><span>Zbývá</span><span>${d.left < 0 ? MINUS : ''}${esc(money(d.left))}</span></div>`;
-      const label = `${fmtMonth(d.ym)}: příjmy ${money(d.in)}, výdaje ${money(d.out)}`;
-      return `<button type="button" class="tcol" data-ym="${d.ym}" data-tip="${key}" aria-pressed="${d.ym === ui.ym}" aria-label="${esc(label)}">`
-        + `<span class="bars"><i class="b in" style="height:${h(d.in)}%"></i><i class="b out" style="height:${h(d.out)}%"></i></span>`
-        + `<span class="tlabel">${esc(fmtMonthShort(d.ym))}</span></button>`;
-    }).join('');
-
-    const withData = data.filter(d => d.n > 0);
-    const avg = $('#avg');
-    if (withData.length >= 2) {
-      const aIn = Math.round(withData.reduce((a, d) => a + d.in, 0) / withData.length / 100) * 100;
-      const aOut = Math.round(withData.reduce((a, d) => a + d.out, 0) / withData.length / 100) * 100;
-      avg.innerHTML = `<div><dt>Průměrný příjem</dt><dd>${esc(money(aIn))}</dd></div>`
-        + `<div><dt>Průměrné výdaje</dt><dd>${esc(money(aOut))}</dd></div>`
-        + `<p>Průměr za ${withData.length} ${withData.length < 5 ? 'měsíce' : 'měsíců'} s pohyby. Příjmy jednoho měsíce se můžou hodně lišit od průměru.</p>`;
-    } else {
-      avg.innerHTML = '';
-    }
-
-    $('#trendTable tbody').innerHTML = data.map(d =>
-      `<tr><td>${esc(fmtMonth(d.ym))}</td><td>${esc(money(d.in))}</td><td>${esc(money(d.out))}</td><td>${esc(money(d.save))}</td></tr>`).join('');
-  }
-
-  function filteredTx() {
-    const q = ui.q.trim().toLowerCase();
-    return inMonth(ui.ym).filter(t => {
+  function exportCSV() {
+    const KIND = { in: 'Příjem', out: 'Výdaj', save: 'Spoření' };
+    const rows = [['Datum', 'Typ', 'Skupina', 'Kategorie', 'Částka', 'Poznámka']];
+    for (const t of [...tx].filter(t => !t.demo).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))) {
       const c = CAT[t.cat];
-      if (ui.kind !== 'all' && c.kind !== ui.kind) return false;
-      if (ui.cat && t.cat !== ui.cat) return false;
-      if (q) {
-        const hay = `${t.note} ${c.name} ${numStr(t.amount)} ${t.amount / 100}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    }).sort((a, b) => b.date.localeCompare(a.date) || b.at - a.at);
-  }
-
-  function renderList() {
-    $$('#kindFilter button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.kind === ui.kind)));
-
-    const chip = $('#activeFilter');
-    chip.innerHTML = ui.cat
-      ? `<button type="button" class="filter-chip" id="clearCat" aria-label="Zrušit filtr kategorie ${esc(CAT[ui.cat].name)}">${esc(CAT[ui.cat].name)}<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>`
-      : '';
-
-    const list = filteredTx();
-    const host = $('#txList');
-    if (!list.length) {
-      const monthHas = inMonth(ui.ym).length > 0;
-      host.innerHTML = monthHas
-        ? `<div class="none"><p>Nic neodpovídá filtru.</p><button type="button" class="text-btn" id="clearAll">Zrušit filtry</button></div>`
-        : `<div class="none"><p>V měsíci ${esc(fmtMonth(ui.ym).toLowerCase())} zatím nic není.</p><button type="button" class="text-btn" id="addHere">Přidat položku</button></div>`;
-      return;
+      const v = (c.kind === 'in' ? 1 : -1) * t.amount;
+      rows.push([t.date, KIND[c.kind], GRP[c.grp].name, c.name, (v / 100).toFixed(2).replace('.', ','), t.note]);
     }
-
-    const today = todayISO();
-    const yesterday = toISO(new Date(Date.now() - 864e5));
-    const groups = [];
-    for (const t of list) {
-      const g = groups[groups.length - 1];
-      if (g && g.date === t.date) g.items.push(t); else groups.push({ date: t.date, items: [t] });
-    }
-
-    host.innerHTML = groups.map(g => {
-      const tag = g.date === today ? 'Dnes' : g.date === yesterday ? 'Včera' : '';
-      const rows = g.items.map(t => {
-        const c = CAT[t.cat];
-        const dot = c.kind === 'in' ? '<i class="dot ring"></i>' : `<i class="dot" style="--dot:${catColor(t.cat)}"></i>`;
-        const sign = c.kind === 'in' ? '+' : MINUS;
-        return `<li><button type="button" class="row" data-id="${esc(t.id)}" aria-label="Upravit: ${esc(c.name)}${t.note ? ', ' + esc(t.note) : ''}, ${sign}${esc(money(t.amount))}">${dot}<span class="row-main"><span class="row-cat">${esc(c.name)}</span>${t.note ? `<span class="row-note">${esc(t.note)}</span>` : ''}</span><span class="row-amt ${c.kind === 'in' ? 'in' : 'out'}">${sign}${esc(money(t.amount))}</span></button></li>`;
-      }).join('');
-      return `<div class="day"><h3 class="day-head">${esc(fmtDay(g.date))}${tag ? `<span class="tag">${tag}</span>` : ''}</h3><ul>${rows}</ul></div>`;
-    }).join('');
+    return '﻿' + rows.map(r => r.map(csvCell).join(';')).join('\r\n');
   }
-
-  function renderAll() {
-    const empty = tx.length === 0;
-    $('#empty').hidden = !empty;
-    $('#content').hidden = empty;
-    $('#demoBanner').hidden = !tx.some(t => t.demo);
-    renderHeader();
-    if (!empty) {
-      renderSlab();
-      renderTrend();
-      renderList();
-    }
-  }
-
-  /* ---------- navigace po měsících ---------- */
-
-  function setMonth(ym) {
-    ui.ym = ym;
-    hideTip();
-    renderAll();
-  }
-  $('#prevBtn').addEventListener('click', () => setMonth(shiftYM(ui.ym, -1)));
-  $('#nextBtn').addEventListener('click', () => setMonth(shiftYM(ui.ym, 1)));
-  $('#todayBtn').addEventListener('click', () => setMonth(todayISO().slice(0, 7)));
-
-  /* ---------- filtry a klikání v přehledu ---------- */
-
-  function toggleCat(id, cls) {
-    ui.cat = ui.cat === id ? null : id;
-    if (ui.cat && ui.kind !== 'all' && CAT[ui.cat].kind !== ui.kind) ui.kind = 'all';
-    renderSlab();
-    renderList();
-    const again = document.querySelector(`.${cls}[data-cat="${id}"]`);
-    if (again) again.focus({ preventScroll: true });
-    if (ui.cat && window.matchMedia('(max-width: 900px)').matches) {
-      $('#txTitle').scrollIntoView({ behavior: reducedMotion() ? 'auto' : 'smooth', block: 'start' });
-    }
-  }
-
-  document.addEventListener('click', e => {
-    const catBtn = e.target.closest('[data-cat]');
-    if (catBtn) { toggleCat(catBtn.dataset.cat, catBtn.classList[0]); return; }
-
-    const col = e.target.closest('.tcol');
-    if (col) {
-      const ym = col.dataset.ym;
-      setMonth(ym);
-      const again = document.querySelector(`.tcol[data-ym="${ym}"]`);
-      if (again) again.focus({ preventScroll: true });
-      return;
-    }
-
-    const row = e.target.closest('.row');
-    if (row) { openEntry(row.dataset.id); return; }
-
-    if (e.target.closest('#clearCat')) { ui.cat = null; renderSlab(); renderList(); return; }
-    if (e.target.closest('#clearAll')) { ui.cat = null; ui.kind = 'all'; ui.q = ''; $('#q').value = ''; renderSlab(); renderList(); return; }
-    if (e.target.closest('#addHere')) { openEntry(); return; }
-  });
-
-  $('#kindFilter').addEventListener('click', e => {
-    const b = e.target.closest('button[data-kind]');
-    if (!b) return;
-    ui.kind = b.dataset.kind;
-    if (ui.cat && ui.kind !== 'all' && CAT[ui.cat].kind !== ui.kind) ui.cat = null;
-    renderSlab();
-    renderList();
-  });
-
-  $('#q').addEventListener('input', e => { ui.q = e.target.value; renderList(); });
-
-  /* ---------- přidat / upravit položku ---------- */
-
-  const entryDlg = $('#entryDlg');
-  const form = $('#entryForm');
-  const fAmount = $('#fAmount');
-  const fDate = $('#fDate');
-  const fNote = $('#fNote');
-  const fErr = $('#fErr');
-  const fDelete = $('#fDelete');
-  let editingId = null;
-
-  const kindInputs = () => $$('input[name="kind"]', form);
-  const currentKind = () => (kindInputs().find(i => i.checked) || { value: 'out' }).value;
-
-  function buildChips(kind, selected) {
-    const cats = CATS.filter(c => c.kind === kind);
-    const pick = cats.some(c => c.id === selected) ? selected : cats[0].id;
-    $('#fCats').innerHTML = cats.map(c => {
-      const dot = c.kind === 'in' ? '<i class="dot ring"></i>' : `<i class="dot" style="--dot:var(--c-${c.id})"></i>`;
-      return `<label class="chip"><input type="radio" name="cat" value="${c.id}"${c.id === pick ? ' checked' : ''}><span>${dot}${esc(c.name)}</span></label>`;
-    }).join('');
-  }
-
-  function defaultDate() {
-    const now = todayISO();
-    if (ui.ym === now.slice(0, 7)) return now;
-    return `${ui.ym}-${pad(Math.min(new Date().getDate(), daysIn(ui.ym)))}`;
-  }
-
-  function resetDeleteBtn() {
-    fDelete.classList.remove('confirm');
-    fDelete.textContent = 'Smazat';
-  }
-
-  function openEntry(id) {
-    const t = id ? tx.find(x => x.id === id) : null;
-    editingId = t ? t.id : null;
-    $('#entryTitle').textContent = t ? 'Upravit položku' : 'Nová položka';
-    fErr.textContent = '';
-    resetDeleteBtn();
-    fDelete.hidden = !t;
-
-    const kind = t ? CAT[t.cat].kind : (ui.kind !== 'all' ? ui.kind : (tx.length ? 'out' : 'in'));
-    kindInputs().forEach(i => { i.checked = i.value === kind; });
-    buildChips(kind, t ? t.cat : (ui.cat && CAT[ui.cat].kind === kind ? ui.cat : null));
-    fAmount.value = t ? String(t.amount / 100).replace('.', ',') : '';
-    fDate.value = t ? t.date : defaultDate();
-    fNote.value = t ? t.note : '';
-
-    if (!entryDlg.open) entryDlg.showModal();
-    fAmount.focus();
-    if (t) fAmount.select();
-  }
-
-  form.addEventListener('change', e => {
-    if (e.target.name === 'kind') buildChips(e.target.value, null);
-  });
-
-  function parseAmount(str) {
-    const s = String(str).replace(/[\s ]/g, '').replace(',', '.');
-    if (!/^\d+(\.\d{1,2})?$/.test(s)) return NaN;
-    return Math.round(parseFloat(s) * 100);
-  }
-
-  form.addEventListener('submit', e => {
-    e.preventDefault();
-    const amount = parseAmount(fAmount.value);
-    const catEl = $('input[name="cat"]:checked', form);
-    if (!(amount > 0) || amount >= 1e12) { fErr.textContent = 'Zadej částku větší než nula, třeba 1 250 nebo 99,90.'; fAmount.focus(); return; }
-    if (!catEl) { fErr.textContent = 'Vyber kategorii.'; return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fDate.value)) { fErr.textContent = 'Vyber datum.'; fDate.focus(); return; }
-
-    const data = { date: fDate.value, cat: catEl.value, amount, note: fNote.value.trim().slice(0, 80) };
-    if (editingId) {
-      const t = tx.find(x => x.id === editingId);
-      if (t) editItem(t, data);
-      else {
-        // položku mezitím smazalo jiné zařízení; uložení ji vrátí
-        const now = Date.now();
-        restoreItem({ id: editingId, ...data, at: now, u: now });
-      }
-    } else {
-      addItem(data);
-    }
-    if (!persist()) return;
-    ui.ym = data.date.slice(0, 7);
-    entryDlg.close();
-    renderAll();
-    toast('Uloženo');
-  });
-
-  fDelete.addEventListener('click', () => {
-    if (!fDelete.classList.contains('confirm')) {
-      fDelete.classList.add('confirm');
-      fDelete.textContent = 'Opravdu smazat?';
-      return;
-    }
-    const removed = removeItem(editingId);
-    if (!removed) { entryDlg.close(); renderAll(); return; }
-    persist();
-    entryDlg.close();
-    renderAll();
-    toast('Smazáno', {
-      label: 'Vrátit',
-      run: () => { restoreItem(removed); persist(); renderAll(); },
-    });
-  });
-
-  $('#fCancel').addEventListener('click', () => entryDlg.close());
-  $('#entryClose').addEventListener('click', () => entryDlg.close());
-  fAmount.addEventListener('input', () => { fErr.textContent = ''; });
-
-  $('#addBtn').addEventListener('click', () => openEntry());
-  $('#emptyAdd').addEventListener('click', () => openEntry());
-
-  /* ---------- data: záloha, export, ukázka ---------- */
-
-  const dataDlg = $('#dataDlg');
-  const dataMsg = $('#dataMsg');
-  const wipeBtn = $('#wipeBtn');
-  let pendingImport = null;
-
-  function resetDataDlg() {
-    dataMsg.textContent = '';
-    wipeBtn.classList.remove('confirm');
-    wipeBtn.textContent = 'Smazat všechna data';
-    gLogout.classList.remove('confirm');
-    gLogout.textContent = 'Odhlásit';
-    pendingImport = null;
-    $('#impFile').value = '';
-  }
-
-  function openData() {
-    resetDataDlg();
-    renderSync();
-    dataDlg.showModal();
-  }
-
-  $('#dataBtn').addEventListener('click', openData);
-  $('#dataClose').addEventListener('click', () => dataDlg.close());
-
-  function download(name, text, type) {
-    const blob = new Blob([text], { type });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    document.body.append(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
-
-  $('#expJson').addEventListener('click', () => {
-    if (!tx.length) { dataMsg.textContent = 'Zatím není co zálohovat.'; return; }
-    const payload = { app: 'budgetovka', version: 1, exportedAt: new Date().toISOString(), tx };
-    download(`budgetovka-zaloha-${todayISO()}.json`, JSON.stringify(payload, null, 2), 'application/json');
-    dataMsg.textContent = `Záloha stažena, ${tx.length} položek.`;
-  });
-
-  $('#expCsv').addEventListener('click', () => {
-    if (!tx.length) { dataMsg.textContent = 'Zatím není co exportovat.'; return; }
-    const q = s => '"' + String(s).replace(/"/g, '""') + '"';
-    const rows = [['Datum', 'Typ', 'Kategorie', 'Částka (Kč)', 'Poznámka'].map(q).join(';')];
-    const sorted = [...tx].sort((a, b) => a.date.localeCompare(b.date) || a.at - b.at);
-    for (const t of sorted) {
-      const c = CAT[t.cat];
-      const [y, m, d] = t.date.split('-');
-      const amount = (t.amount / 100).toFixed(2).replace('.', ',');
-      rows.push([`${Number(d)}.${Number(m)}.${y}`, KIND_NAME[c.kind], c.name, amount, t.note].map((v, i) => (i === 3 ? v : q(v))).join(';'));
-    }
-    download(`budgetovka-${todayISO()}.csv`, '﻿' + rows.join('\r\n'), 'text/csv;charset=utf-8');
-    dataMsg.textContent = 'CSV staženo.';
-  });
-
-  $('#impFile').addEventListener('change', async e => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-    try {
-      const parsed = JSON.parse(await file.text());
-      const { items, skipped } = sanitize(parsed && parsed.tx);
-      if (!items.length) throw new Error('empty');
-      pendingImport = items;
-      dataMsg.innerHTML = `<div class="inline"><p>Záloha obsahuje ${items.length} položek${skipped ? `, ${skipped} nečitelných se přeskočí` : ''}. Nahradit jimi aktuální data${GAuth.signedIn() ? ' (i na Google Disku)' : ''}?</p><button type="button" class="btn btn-danger confirm" id="impYes">Nahradit data</button><button type="button" class="btn btn-ghost" id="impNo">Zrušit</button></div>`;
-    } catch (err) {
-      pendingImport = null;
-      dataMsg.textContent = 'Tenhle soubor není záloha z Budgetovky. Vyber soubor JSON, který jsi stáhl tlačítkem Stáhnout zálohu.';
-    }
-  });
-
-  dataMsg.addEventListener('click', e => {
-    if (e.target.closest('#impNo')) { resetDataDlg(); return; }
-    if (e.target.closest('#impYes') && pendingImport) {
-      undoSnapshot = snapshot();
-      replaceAll(pendingImport);
-      pendingImport = null;
-      persist();
-      ui.cat = null; ui.kind = 'all'; ui.q = ''; $('#q').value = '';
-      dataDlg.close();
-      renderAll();
-      toast('Data obnovena ze zálohy', { label: 'Vrátit', run: restoreSnapshot });
-    }
-  });
-
-  function restoreSnapshot() {
-    if (!undoSnapshot) return;
-    replaceAll(undoSnapshot);
-    undoSnapshot = null;
-    persist();
-    renderAll();
-  }
-
-  // ukázková data zůstávají jen v tomhle zařízení, na Disk se nenahrávají
-  function loadDemo() {
-    tx = tx.concat(demoData());
-    persist();
-    ui.ym = todayISO().slice(0, 7);
-    renderAll();
-    toast('Ukázková data načtena');
-  }
-  $('#loadDemo').addEventListener('click', () => { dataDlg.close(); loadDemo(); });
-  $('#emptyDemo').addEventListener('click', loadDemo);
-
-  $('#demoClear').addEventListener('click', () => {
-    undoSnapshot = snapshot();
-    replaceAll(tx.filter(t => !t.demo));
-    persist();
-    ui.cat = null;
-    renderAll();
-    toast('Ukázková data smazána', { label: 'Vrátit', run: restoreSnapshot });
-  });
-
-  wipeBtn.addEventListener('click', () => {
-    if (!wipeBtn.classList.contains('confirm')) {
-      wipeBtn.classList.add('confirm');
-      wipeBtn.textContent = 'Opravdu smazat vše?';
-      return;
-    }
-    undoSnapshot = snapshot();
-    replaceAll([]);
-    persist();
-    ui.cat = null; ui.kind = 'all'; ui.q = ''; $('#q').value = '';
-    dataDlg.close();
-    renderAll();
-    toast('Všechna data smazána', { label: 'Vrátit', run: restoreSnapshot });
-  });
-
-  dataDlg.addEventListener('close', resetDataDlg);
-  entryDlg.addEventListener('close', resetDeleteBtn);
-
-  // klik mimo okno (na ztmavené pozadí) ho zavře; klik na jeho vnitřní okraj ne
-  [entryDlg, dataDlg].forEach(dlg => {
-    dlg.addEventListener('click', e => {
-      if (e.target !== dlg) return;
-      const r = dlg.getBoundingClientRect();
-      const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
-      if (outside) dlg.close();
-    });
-  });
 
   /* ---------- Google: přihlášení ---------- */
 
@@ -915,7 +492,7 @@
     // má zařízení změny, které ještě nejsou na Disku?
     unsynced() {
       const d = localDoc();
-      return d.tx.length > 0 && gGet('sig') !== hash(canon(d));
+      return (d.tx.length > 0 || Object.keys(d.meta).length > 0) && gGet('sig') !== hash(canon(d));
     },
 
     logout() {
@@ -926,7 +503,7 @@
   };
 
   function wipeLocal() {
-    tx = []; tomb = {}; undoSnapshot = null;
+    tx = []; tomb = {}; meta = {}; undoSnapshot = null;
     persist(false);
     gDel('fid', 'synced', 'sig');
     renderAll();
@@ -950,11 +527,29 @@
 
   const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
   const norm = t => ({ id: t.id, date: t.date, cat: t.cat, amount: t.amount, note: t.note, at: t.at, u: t.u });
-  const localDoc = () => ({ tx: tx.filter(t => !t.demo).map(norm), tomb: { ...tomb } });
-  const canon = d => JSON.stringify([d.tx.map(norm).sort(byId), Object.keys(d.tomb).sort().map(k => [k, d.tomb[k]])]);
+  const localDoc = () => ({ tx: tx.filter(t => !t.demo).map(norm), tomb: { ...tomb }, meta: JSON.parse(JSON.stringify(meta)) });
+  const canon = d => JSON.stringify([
+    d.tx.map(norm).sort(byId),
+    Object.keys(d.tomb).sort().map(k => [k, d.tomb[k]]),
+    Object.keys(d.meta || {}).sort().map(k => [k, d.meta[k].v, d.meta[k].u]),
+  ]);
+
+  function mergeMeta(a, b) {
+    const out = {};
+    for (const src of [a || {}, b || {}]) {
+      for (const [k, m] of Object.entries(src)) {
+        const cur = out[k];
+        if (!cur || m.u > cur.u || (m.u === cur.u && JSON.stringify(m.v) > JSON.stringify(cur.v))) out[k] = { v: m.v, u: m.u };
+      }
+    }
+    const cutoff = Date.now() - TOMB_TTL;
+    for (const k of Object.keys(out)) if (out[k].v == null && out[k].u < cutoff) delete out[k];
+    return out;
+  }
 
   /* U každé položky vyhrává novější změna. Smazání (náhrobek) vyhraje, je-li novější než poslední úprava.
-     Slučování je symetrické a opakovatelné, takže na pořadí synchronizací zařízení nezáleží. */
+     Nastavení se slučuje po klíčích stejným způsobem. Slučování je symetrické a opakovatelné,
+     takže na pořadí synchronizací zařízení nezáleží. */
   function mergeDocs(a, b) {
     const dead = {};
     for (const src of [a.tomb, b.tomb]) for (const [id, t] of Object.entries(src)) dead[id] = Math.max(dead[id] || 0, t);
@@ -971,23 +566,33 @@
     }
     const cutoff = Date.now() - TOMB_TTL;
     for (const id of Object.keys(dead)) if (dead[id] < cutoff) delete dead[id];
-    return { tx: out.sort(byId), tomb: dead };
+    return { tx: out.sort(byId), tomb: dead, meta: mergeMeta(a.meta, b.meta) };
   }
 
   function applyDoc(doc) {
     tx = doc.tx.map(t => ({ ...t })).concat(tx.filter(t => t.demo));
     tomb = { ...doc.tomb };
+    meta = JSON.parse(JSON.stringify(doc.meta || {}));
     persist(false);
     renderAll();
   }
 
   function parseRemote(text) {
-    if (!text.trim()) return { tx: [], tomb: {} };
+    if (!text.trim()) return { tx: [], tomb: {}, meta: {} };
     let j;
     try { j = JSON.parse(text); } catch (e) { throw new Error('Soubor na Disku nejde přečíst. Nechávám ho beze změny.'); }
     if (!j || j.app !== 'budgetovka') throw new Error('Soubor na Disku nemá formát Budgetovky. Nechávám ho beze změny.');
     if ((j.v || 0) > SCHEMA) throw new Error('Soubor na Disku je z novější verze appky. Obnov stránku.');
-    return { tx: sanitize(j.tx).items.filter(t => !t.demo), tomb: sanitizeTomb(j.tomb) };
+    return { tx: sanitize(j.tx).items.filter(t => !t.demo), tomb: sanitizeTomb(j.tomb), meta: sanitizeMeta(j.meta) };
+  }
+
+  /* Záloha ze souboru se SLOUČÍ s tím, co už v appce je (nic se nepřepíše naslepo). */
+  function mergeBackup(text) {
+    const remote = parseRemote(text);
+    const before = tx.filter(t => !t.demo).length;
+    applyDoc(mergeDocs(localDoc(), remote));
+    persist(true);
+    return { added: tx.filter(t => !t.demo).length - before, total: remote.tx.length };
   }
 
   const DRV = 'https://www.googleapis.com/drive/v3/files';
@@ -1012,17 +617,17 @@
   }
 
   async function uploadFile(id, doc) {
-    const body = JSON.stringify({ app: 'budgetovka', v: SCHEMA, updatedAt: new Date().toISOString(), tx: doc.tx, tomb: doc.tomb });
+    const body = JSON.stringify({ app: 'budgetovka', v: SCHEMA, updatedAt: new Date().toISOString(), tx: doc.tx, tomb: doc.tomb, meta: doc.meta || {} });
     if (id) {
       await gfetch(`${UP}/${id}?uploadType=media`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body });
       return id;
     }
     const b = 'bdg' + uid().replace(/-/g, '');
-    const meta = JSON.stringify({ name: GCFG.fileName, mimeType: 'application/json' });
+    const metaPart = JSON.stringify({ name: GCFG.fileName, mimeType: 'application/json' });
     const r = await (await gfetch(`${UP}?uploadType=multipart&fields=id`, {
       method: 'POST',
       headers: { 'Content-Type': 'multipart/related; boundary=' + b },
-      body: `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${b}--`,
+      body: `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metaPart}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${b}--`,
     })).json();
     gSet('fid', r.id);
     return r.id;
@@ -1051,7 +656,7 @@
         remote = id ? await downloadFile(id) : null;
         if (!remote) id = null;
       }
-      const base = remote || { tx: [], tomb: {} };
+      const base = remote || { tx: [], tomb: {}, meta: {} };
       const merged = mergeDocs(base, localDoc());
       if (!remote || canon(merged) !== canon(base)) await uploadFile(id, merged);
 
@@ -1104,8 +709,8 @@
 
   /* ---------- Google: zobrazení stavu ---------- */
 
-  const syncBtn = $('#syncBtn');
-  const gLogout = $('#gLogout');
+  const setText = (sel, text) => { const el = $(sel); if (el) el.textContent = text; };
+  const setHidden = (sel, hide) => { const el = $(sel); if (el) el.hidden = hide; };
 
   function setStatus(s, msg) {
     syncState = s;
@@ -1116,24 +721,28 @@
   function renderSync() {
     const hm = syncLast ? new Date(syncLast).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '';
     const map = {
-      out: ['Přihlásit přes Google', 'Přihlásit přes Google a ukládat data na Google Disk'],
+      out: ['Přihlásit', 'Přihlásit přes Google a ukládat data na Google Disk'],
       busy: ['Synchronizuji…', 'Synchronizuji s Google Diskem'],
-      ok: ['Synchronizováno', 'Synchronizováno s Google Diskem' + (hm ? ' v\u00A0' + hm : '')],
+      ok: ['Synchronizováno', 'Synchronizováno s Google Diskem' + (hm ? ' v ' + hm : '')],
       expired: ['Obnovit přihlášení', 'Přihlášení vypršelo. Změny se zatím ukládají jen v tomto zařízení.'],
       offline: ['Offline', 'Bez připojení. Změny se nahrají, až se připojíš.'],
       error: ['Chyba synchronizace', 'Synchronizace selhala: ' + syncErr],
     };
     const [label, title] = map[syncState] || map.out;
-    syncBtn.hidden = !GAuth.configured();
-    syncBtn.dataset.s = syncState;
-    syncBtn.title = title;
-    $('#syncTxt').textContent = label;
+    const btn = $('#syncBtn');
+    if (btn) {
+      btn.hidden = !GAuth.configured();
+      btn.dataset.s = syncState;
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+    }
+    setText('#syncTxt', label);
 
     const cfg = GAuth.configured();
     const signed = GAuth.signedIn();
     const email = gGet('owner');
     const detail = {
-      ok: hm ? `Poslední synchronizace v\u00A0${hm}.` : '',
+      ok: hm ? `Poslední synchronizace v ${hm}.` : '',
       busy: 'Synchronizuji…',
       expired: 'Přihlášení vypršelo, změny se zatím ukládají jen v tomto zařízení. Obnov přihlášení.',
       offline: 'Bez připojení, změny se nahrají, až se připojíš.',
@@ -1143,66 +752,106 @@
     if (!cfg) text = 'Přihlášení přes Google ještě není nastavené. Chybí Client ID v souboru app.js, postup je v README.';
     else if (!signed) text = `Po přihlášení se data ukládají do souboru „${GCFG.fileName}“ na tvém Google Disku a sdílejí se mezi telefonem a počítačem. Appka vidí jen tenhle jeden soubor, ne zbytek Disku.`;
     else text = `${email ? 'Přihlášen jako ' + email + '.' : 'Přihlášen přes Google.'} ${detail}`.trim();
-    $('#gText').textContent = text;
+    setText('#gText', text);
 
-    $('#gLogin').hidden = !cfg || (signed && syncState !== 'expired');
-    $('#gLogin').textContent = signed ? 'Obnovit přihlášení' : 'Přihlásit přes Google';
-    $('#gSyncNow').hidden = !signed || syncState === 'expired';
-    $('#gSyncNow').disabled = syncState === 'busy';
-    gLogout.hidden = !signed;
-    $('#dataNote').textContent = signed
-      ? 'Data jsou v tomhle prohlížeči a zrcadlí se do souboru na tvém Google Disku. Zálohu do souboru si můžeš stáhnout i tak.'
-      : 'Bez přihlášení je všechno uložené jen v tomhle prohlížeči na tomhle zařízení. Občas si stáhni zálohu, ať o data nepřijdeš při vymazání prohlížeče nebo výměně telefonu.';
-    $('#wipeNote').textContent = signed ? 'Smaže data i na Google Disku a na ostatních zařízeních.' : 'Nejdřív si stáhni zálohu.';
-    $('#emptyText').textContent = 'Příjmy, výdaje a spoření se tu sečtou po měsících a rozdělí do kategorií. '
-      + (cfg ? 'Data zůstávají v tomto prohlížeči, po přihlášení přes Google i na tvém Disku.' : 'Data zůstávají jen v tomto prohlížeči.');
-  }
-
-  syncBtn.addEventListener('click', () => {
-    if (syncState === 'out' || syncState === 'expired') { GAuth.login(false); return; }
-    openData();
-  });
-  $('#gLogin').addEventListener('click', () => GAuth.login(false));
-  $('#gSyncNow').addEventListener('click', () => { dataMsg.textContent = ''; Sync.run(); });
-  gLogout.addEventListener('click', () => {
-    if (!gLogout.classList.contains('confirm')) {
-      gLogout.classList.add('confirm');
-      gLogout.textContent = 'Opravdu odhlásit?';
-      dataMsg.textContent = 'Data se z tohoto zařízení smažou. Na Google Disku zůstanou a po dalším přihlášení se vrátí.'
-        + (GAuth.unsynced() ? ' Pozor: poslední změny se ještě nenahrály na Disk a odhlášením zmizí.' : '');
-      return;
+    const login = $('#gLogin');
+    if (login) {
+      login.hidden = !cfg || (signed && syncState !== 'expired');
+      login.textContent = signed ? 'Obnovit přihlášení' : 'Přihlásit přes Google';
     }
-    GAuth.logout();
-    dataDlg.close();
-    toast('Odhlášeno. Data zůstala na Google Disku.');
-  });
-
-  /* ---------- klávesy ---------- */
-
-  document.addEventListener('keydown', e => {
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    const t = e.target;
-    const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-    if (typing || entryDlg.open || dataDlg.open) return;
-    if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openEntry(); }
-    else if (e.key === 'ArrowLeft') { setMonth(shiftYM(ui.ym, -1)); }
-    else if (e.key === 'ArrowRight') { setMonth(shiftYM(ui.ym, 1)); }
-  });
-
-  /* ---------- start ---------- */
-
-  window.addEventListener('storage', e => {
-    if (e.key === STORE_KEY) { ({ tx, tomb } = load()); renderAll(); }
-  });
-
-  GAuth.handleRedirect();
-  ({ tx, tomb } = load());
-  renderAll();
-  renderSync();
-  if (notice) { toast(notice); notice = ''; }
-  Sync.init();
-
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    const now = $('#gSyncNow');
+    if (now) { now.hidden = !signed || syncState === 'expired'; now.disabled = syncState === 'busy'; }
+    setHidden('#gLogout', !signed);
+    setText('#dataNote', signed
+      ? 'Data jsou v tomhle prohlížeči a zrcadlí se do souboru na tvém Google Disku. Zálohu do souboru si můžeš stáhnout i tak.'
+      : 'Bez přihlášení je všechno uložené jen v tomhle prohlížeči na tomhle zařízení. Občas si stáhni zálohu, ať o data nepřijdeš při vymazání prohlížeče nebo výměně telefonu.');
+    setText('#wipeNote', signed ? 'Smaže data i na Google Disku a na ostatních zařízeních.' : 'Nejdřív si stáhni zálohu.');
+    if (ui.sync) ui.sync({ state: syncState, signed, cfg });
   }
+
+  function bindSync() {
+    const btn = $('#syncBtn');
+    if (btn) btn.addEventListener('click', () => {
+      if (syncState === 'out' || syncState === 'expired') { GAuth.login(false); return; }
+      if (ui.openData) ui.openData();
+    });
+    const login = $('#gLogin');
+    if (login) login.addEventListener('click', () => GAuth.login(false));
+    const now = $('#gSyncNow');
+    if (now) now.addEventListener('click', () => { if (ui.dataMsg) ui.dataMsg(''); Sync.run(); });
+    const out = $('#gLogout');
+    if (out) out.addEventListener('click', () => {
+      if (!out.classList.contains('confirm')) {
+        out.classList.add('confirm');
+        out.textContent = 'Opravdu odhlásit?';
+        if (ui.dataMsg) ui.dataMsg('Data se z tohoto zařízení smažou. Na Google Disku zůstanou a po dalším přihlášení se vrátí.'
+          + (GAuth.unsynced() ? ' Pozor: poslední změny se ještě nenahrály na Disk a odhlášením zmizí.' : ''));
+        return;
+      }
+      GAuth.logout();
+      if (ui.closeData) ui.closeData();
+      toast('Odhlášeno. Data zůstala na Google Disku.');
+    });
+  }
+
+  /* ---------- rozhraní pro zobrazení ---------- */
+
+  const BG = {
+    CATS, CAT, GROUPS, GRP, ALIAS, Rules, An, Imp, SCHEMA, ui,
+    u: {
+      $, $$, esc, cap, pad, uid, nf0, nf1, numStr, numRound, money, moneyRound, compact, pctOf, pctText,
+      toISO, todayISO, dateOf, shiftYM, daysIn, fmtMonth, fmtMonthName, fmtMonthShort, fmtDay, fmtDate, fmtShort,
+      reducedMotion, MINUS, NBSP,
+    },
+    toast,
+    get tx() { return tx; },
+    get tomb() { return tomb; },
+    get meta() { return meta; },
+    limits, target, getMeta, setMeta, userRules, ruleCount,
+    add: addItem, edit: editItem, remove: removeItem, restore: restoreItem, replaceAll,
+    setRule, clearRule, countSameMerchant, addMany,
+    commit, persist,
+    // Zpráva pro "Vrátit": vezme snímek před změnou a vrátí funkci, která ho obnoví.
+    snap() { undoSnapshot = snapshot(); return undoSnapshot; },
+    undo() {
+      if (!undoSnapshot) return;
+      const s = undoSnapshot;
+      undoSnapshot = null;
+      replaceAll(s.tx);
+      // nastavení se vrací novou změnou (s novým časem), aby vyhrálo i při synchronizaci
+      for (const k of new Set([...Object.keys(meta), ...Object.keys(s.meta)])) {
+        const want = s.meta[k] ? s.meta[k].v : null;
+        if (getMeta(k) !== want) setMeta(k, want);
+      }
+      commit();
+    },
+    demoData, loadDemo() { tx = tx.concat(demoData()); persist(); renderAll(); },
+    clearDemo() { BG.snap(); replaceAll(tx.filter(t => !t.demo)); commit(); },
+    hasDemo: () => tx.some(t => t.demo),
+    wipeAll() { BG.snap(); replaceAll([]); for (const k of Object.keys(meta)) setMeta(k, null); commit(); },
+    exportJSON, exportCSV, mergeBackup,
+    sync: { run: Sync.run, state: () => syncState, last: () => syncLast },
+    auth: GAuth, GCFG,
+    unsynced: () => GAuth.unsynced(),
+    // volá views.js po zaregistrování zobrazení
+    boot() {
+      GAuth.handleRedirect();
+      ({ tx, tomb, meta } = load());
+      bindSync();
+      renderAll();
+      renderSync();
+      if (notice) { toast(notice); notice = ''; }
+      Sync.init();
+      window.addEventListener('storage', e => {
+        if (e.key === 'budgetovka.v1') { ({ tx, tomb, meta } = load()); renderAll(); }
+      });
+      if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      }
+    },
+    // jen pro testy
+    _test: { mergeDocs, localDoc, canon, applyDoc, parseRemote, sanitize, sanitizeMeta, GAuth, gGet, gSet, Sync },
+  };
+
+  window.BG = BG;
 })();
