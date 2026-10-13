@@ -168,13 +168,15 @@
       const base = r.id ? 'id|' + r.id : [r.date, r.amount, r.name, r.msg].join('|');
       const n = (seen.get(base) || 0) + 1;
       seen.set(base, n);
-      const id = 'imp-' + hash(base + '|' + (r.id ? '' : n));
+      const id = r.uid || 'imp-' + hash(base + '|' + (r.id ? '' : n));
       if (have.has(id)) { stat.dup++; continue; }
       if (Object.prototype.hasOwnProperty.call(tomb, id)) { stat.gone++; continue; }
-      const note = (Rules.tidyName(r.name) || Rules.tidyName(r.msg) || 'Pohyb').slice(0, 80);
+      const note = (r.note || Rules.tidyName(r.name) || Rules.tidyName(r.msg) || 'Pohyb').slice(0, 80);
       const kk = [r.date, Math.abs(r.amount), Rules.merchantKey(note)].join('|');
       if ((sig.get(kk) || 0) > 0 && !r.id) { sig.set(kk, sig.get(kk) - 1); stat.dup++; continue; }
-      const c = Rules.categorize({ name: r.name || r.msg, msg: r.msg, amount: r.amount, type: r.type, card: r.card }, userRules);
+      const auto = Rules.categorize({ name: r.name || r.msg, msg: r.msg, amount: r.amount, type: r.type, card: r.card }, userRules);
+      // pevná kategorie ze čtečky výpisu (daně, předplatné) platí, jen když ji nepřebije tvoje pravidlo
+      const c = r.cat && auto.how !== 'user' ? { cat: r.cat, how: 'rule' } : auto;
       items.push({ id, date: r.date, cat: c.cat, amount: Math.abs(r.amount), note, at: now, u: now, _how: c.how, _in: r.amount > 0 });
       stat.byCat[c.cat] = (stat.byCat[c.cat] || 0) + 1;
       if (c.cat === 'ostatni') stat.unsorted++;

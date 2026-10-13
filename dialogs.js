@@ -66,12 +66,14 @@
       title: editing ? 'Upravit pohyb' : 'Nový pohyb', left: 'Zrušit', right: 'Uložit',
       body: `<div style="display:flex;justify-content:center"><div class="mini-seg" id="enKind" role="group">${KINDS.map(([v, l]) => `<button type="button" data-k="${v}" aria-pressed="${st.kind === v}">${l}</button>`).join('')}</div></div>
       <div class="fg"><div class="group">
-        <div class="frow"><label for="enAmt">Částka</label><input id="enAmt" type="text" inputmode="decimal" autocomplete="off" placeholder="0" value="${editing ? amountInput(t.amount) : ''}"><span class="lab" style="width:auto;color:var(--label2)">Kč</span></div>
+        <div class="frow"><label for="enAmt">Částka</label><input id="enAmt" type="text" inputmode="decimal" autocomplete="off" placeholder="0" value="${editing ? amountInput(t.amount) : preset && preset.amount ? amountInput(preset.amount) : ''}"><span class="lab" style="width:auto;color:var(--label2)">Kč</span></div>
         <div class="frow"><label for="enCat">Kategorie</label><select id="enCat"></select></div>
         <div class="chiprow" id="enChips"></div>
         <div class="frow"><label for="enDate">Datum</label><input id="enDate" type="date" value="${editing ? t.date : defDate}"></div>
-        <div class="frow"><label for="enNote">Obchodník</label><input id="enNote" type="text" maxlength="80" autocomplete="off" list="enNotes" placeholder="Např. Albert" value="${editing ? esc(t.note) : ''}"><datalist id="enNotes"></datalist></div>
+        <div class="frow"><label for="enNote">Obchodník</label><input id="enNote" type="text" maxlength="80" autocomplete="off" list="enNotes" placeholder="Např. Albert" value="${editing ? esc(t.note) : preset && preset.note ? esc(preset.note) : ''}"><datalist id="enNotes"></datalist></div>
       </div></div>
+      ${editing ? '' : `<button type="button" class="scanbtn" id="enScan">${K.icon('camera')}<span>${preset && preset.fromPhoto ? 'Vyfotit znovu' : 'Vyplnit z fotky účtenky'}</span></button>`}
+      ${preset && preset.fromPhoto ? `<div class="callout" style="margin:0">Přečteno z fotky${preset.shop ? `: <b>${esc(preset.shop)}</b>` : ''}. Zkontroluj částku a datum, pak ulož.</div>` : ''}
       <div class="fg" id="enRemWrap" hidden><div class="group"><div class="frow"><div class="lab" style="width:auto;flex:1"><span id="enRemLab"></span><small id="enRemSub"></small></div><input id="enRem" type="checkbox" class="switch" aria-label="Zapamatovat pro obchodníka"></div></div></div>
       ${editing ? '<div class="fg"><div class="group"><button type="button" class="danger-row" id="enDel">Smazat pohyb</button></div></div>' : ''}
       <p class="msg bad" id="enMsg" role="alert"></p>`,
@@ -140,6 +142,11 @@
       syncRem();
     });
 
+    const scan = $('#enScan', dlg);
+    if (scan) scan.addEventListener('click', () => { close(dlg); setTimeout(() => pickPhoto(), 60); });
+    // obchodník z fotky: nabídni kategorii stejně jako při psaní
+    if (!editing && preset && preset.note) setTimeout(() => note.dispatchEvent(new Event('change')), 0);
+
     function save() {
       msg.textContent = '';
       const v = Imp.parseAmount(amt.value);
@@ -177,7 +184,7 @@
       });
     }
     open(dlg);
-    if (!editing) { try { amt.focus({ preventScroll: true }); } catch (e) { /* bez fokusu */ } }
+    if (!editing && !(preset && preset.amount)) { try { amt.focus({ preventScroll: true }); } catch (e) { /* bez fokusu */ } }
   }
 
   /* ========== data, záloha a Google ========== */
@@ -191,7 +198,8 @@
           <div class="gbtns"><button type="button" id="gLogin" class="primary" hidden>Přihlásit přes Google</button><button type="button" id="gSyncNow" hidden>Synchronizovat teď</button><button type="button" id="gLogout" hidden>Odhlásit</button></div>
         </div></div></div>
         <div class="fg"><div class="sechead">Import</div><div class="group">
-          <button type="button" class="btnrow" id="btnCsv">Nahrát výpis (CSV) nebo zálohu (JSON)…</button>
+          <button type="button" class="btnrow" id="btnCsv">Nahrát výpis (PDF, CSV), fotku nebo zálohu…</button>
+          <button type="button" class="btnrow" id="btnPhoto">Vyfotit účtenku nebo výpis…</button>
         </div><div class="secfoot">Soubor můžeš taky jen přetáhnout do okna. Zpracuje se jen v tomhle prohlížeči a nikam se neposílá. Duplicity se přeskočí a záloha se sloučí, nic se nepřepíše.</div></div>
         <div class="fg"><div class="sechead">Záloha</div><div class="group">
           <button type="button" class="btnrow" id="btnExpJson">Stáhnout zálohu (JSON)</button>
@@ -209,6 +217,7 @@
     });
     const d = dlgs.data;
     $('#btnCsv', d).addEventListener('click', pickFile);
+    $('#btnPhoto', d).addEventListener('click', pickPhoto);
     $('#btnExpJson', d).addEventListener('click', () => download(`budgetovka-zaloha-${todayISO()}.json`, BG.exportJSON(), 'application/json'));
     $('#btnExpCsv', d).addEventListener('click', () => download(`budgetovka-${todayISO()}.csv`, BG.exportCSV(), 'text/csv;charset=utf-8'));
     $('#btnTriage', d).addEventListener('click', () => { close(d); openTriage(); });
@@ -283,8 +292,11 @@
       let i = 0;
       while (i < head.length && (head[i] <= 32 || head[i] === 0xEF || head[i] === 0xBB || head[i] === 0xBF)) i++;
       const isJSON = /\.json$/i.test(f.name) || head[i] === 0x7B; // {
+      const isPDF = /\.pdf$/i.test(f.name) || (head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46);
+      const isImg = /^image\//.test(f.type) || /\.(jpe?g|png|heic|heif|webp|gif|bmp)$/i.test(f.name);
       if (isJSON) mergeJSON(new TextDecoder('utf-8').decode(buf));
-      else if (/\.pdf$/i.test(f.name) || (head[0] === 0x25 && head[1] === 0x50)) BG.toast('PDF výpis appka nepřečte. Stáhni si z bankovnictví výpis jako CSV.');
+      else if (isPDF) startPDF(f.name, buf);
+      else if (isImg) startImage(f);
       else startCSV(f.name, buf);
     };
     fr.onerror = () => BG.toast('Soubor se nepodařilo přečíst.');
@@ -292,6 +304,56 @@
   }
 
   function pickFile() { const i = $('#fileCsv'); i.value = ''; i.click(); }
+  function pickPhoto() { const i = $('#filePhoto'); i.value = ''; i.click(); }
+  $('#filePhoto').addEventListener('change', e => handleFile(e.target.files && e.target.files[0]));
+
+  /* Průběh čtení PDF a fotky: okno importu ukazuje, co se děje. */
+  function busy(title, text, pct) {
+    const dlg = dlgs.imp;
+    dlg.innerHTML = K.sheetHTML({ title, left: 'Zrušit', body: `<div class="panel busy"><div class="spin" aria-hidden="true"></div><p>${esc(text)}</p>${pct != null ? `<div class="pbar"><i style="width:${Math.round(pct * 100)}%"></i></div>` : ''}<p class="cap">Všechno se čte přímo v tomhle zařízení, soubor se nikam neposílá.</p></div>` });
+    if (!dlg.open) open(dlg);
+  }
+  let readToken = 0;
+
+  async function startPDF(name, buf) {
+    const my = ++readToken;
+    close(dlgs.data);
+    busy('Čtu PDF', 'Načítám výpis…', 0);
+    try {
+      const r = await window.BudgetExtract.fromPDF(buf, p => { if (my === readToken && dlgs.imp.open) busy('Čtu PDF', 'Čtu stránky výpisu…', p); });
+      if (my !== readToken || !dlgs.imp.open) return;
+      if (!r.recs.length) { close(dlgs.imp); BG.toast('V PDF jsem nenašel žádné pohyby s datem a částkou.'); return; }
+      IMP = { name, recs: r.recs, check: r.check, bank: r.bank, source: 'pdf', revive: false };
+      renderImport();
+    } catch (err) {
+      if (my !== readToken) return;
+      close(dlgs.imp);
+      BG.toast(err.message || 'PDF se nepodařilo přečíst.');
+    }
+  }
+
+  async function startImage(file) {
+    const my = ++readToken;
+    close(dlgs.data);
+    busy('Čtu fotku', 'Připravuji rozpoznávání textu (poprvé to chvíli trvá)…', null);
+    try {
+      const r = await window.BudgetExtract.fromImage(file, p => { if (my === readToken && dlgs.imp.open) busy('Čtu fotku', 'Rozpoznávám text…', p); });
+      if (my !== readToken || !dlgs.imp.open) return;
+      if (r.kind === 'statement') {
+        IMP = { name: file.name, recs: r.recs, check: null, bank: '', source: 'ocr', revive: false };
+        renderImport();
+        return;
+      }
+      close(dlgs.imp);
+      const rc = r.receipt;
+      if (!rc.amount) { BG.toast('Na fotce jsem nenašel částku. Zkus ji vyfotit rovně a ostře.'); return; }
+      setTimeout(() => openEntry(null, { amount: rc.amount, date: rc.date || todayISO(), note: rc.shop, shop: rc.shop, fromPhoto: true }), 450);
+    } catch (err) {
+      if (my !== readToken) return;
+      close(dlgs.imp);
+      BG.toast(/heic|heif/i.test(file.type + file.name) ? 'Formát HEIC tenhle prohlížeč neumí. Vyfoť to přes appku nebo ulož jako JPEG.' : (err.message || 'Fotku se nepodařilo přečíst.'));
+    }
+  }
 
   $('#fileJson').addEventListener('change', e => handleFile(e.target.files && e.target.files[0]));
 
@@ -318,6 +380,10 @@
   $('#fileCsv').addEventListener('change', e => handleFile(e.target.files && e.target.files[0]));
 
   function importPreview() {
+    if (IMP.recs) {
+      const tr = { recs: IMP.recs, skipped: { foreign: 0, invalid: 0, pending: 0 } };
+      return { tr, b: Imp.build(tr.recs, { userRules: BG.userRules(), existing: BG.tx.filter(t => !t.demo), tomb: IMP.revive ? {} : BG.tomb }) };
+    }
     const m = IMP.map;
     if (m.date === undefined || m.amount === undefined) return null;
     const tr = Imp.toRecords(IMP.a.rows, IMP.a.headerIdx, m);
@@ -329,7 +395,7 @@
     const dlg = dlgs.imp;
     const p = importPreview();
     const n = p ? p.b.items.length : 0;
-    const hdr = IMP.a.header;
+    const hdr = IMP.a ? IMP.a.header : [];
     const mapRows = MAP_FIELDS.map(([f, label, req]) => `<div class="maprow"><label for="map_${f}">${label}${req ? ' *' : ''}</label>
       <select id="map_${f}" data-f="${f}"><option value="">—</option>${hdr.map((h, i) => `<option value="${i}"${IMP.map[f] === i ? ' selected' : ''}>${esc(String(h).trim() || 'sloupec ' + (i + 1))}</option>`).join('')}</select></div>`).join('');
     let body = '';
@@ -349,13 +415,20 @@
         <div><div class="k">Výdaje</div><div class="v">${moneyRound(s.out)}</div></div>
         <div><div class="k">Období</div><div class="v" style="font-size:14px">${s.from ? `${fmtShort(s.from)} – ${fmtShort(s.to)} ${s.to.slice(0, 4)}` : '–'}</div></div>
       </div>`;
+      if (IMP.source === 'pdf') {
+        const ck = IMP.check;
+        const ok = ck && ck.declared != null && ck.declared === ck.blocks;
+        body += `<div class="callout${ck && !ok && ck.declared != null ? ' warn' : ' good'}" style="margin:0">${IMP.bank ? `<b>${esc(IMP.bank)}</b> · ` : ''}PDF výpis${ck ? (ck.declared != null ? (ok ? ` · přečteno všech <b>${ck.blocks}</b> transakcí, počet sedí s bankou` : ` · přečteno ${ck.blocks} z ${ck.declared} transakcí, zkontroluj výsledek`) : ` · ${ck.blocks} transakcí`) : ''}. Platby v cizí měně jsou přepočtené na Kč podle skutečného zaúčtování.</div>`;
+        if (!IMP.bank) body += `<div class="callout warn" style="margin:0">Tenhle formát výpisu appka nezná přesně, pohyby hledá podle data a částky na řádku. Projdi si ukázku.</div>`;
+      }
+      if (IMP.source === 'ocr') body += `<div class="callout warn" style="margin:0">Přečteno z fotky. OCR se může splést v číslech, projdi si pohyby níž. Částky bez znaménka bere appka jako výdaje.</div>`;
       if (skipped.length) body += `<p class="msg" style="text-align:left;padding:0 4px">Přeskočeno: ${skipped.join(', ')}.</p>`;
       if (s.gone > 0) body += `<div class="fg"><div class="group"><div class="frow"><div class="lab" style="width:auto;flex:1">Přidat i dříve smazané<small>${s.gone} pohybů, které jsi v appce smazal</small></div><input id="impRevive" type="checkbox" class="switch"${IMP.revive ? ' checked' : ''}></div></div></div>`;
       if (n) {
         body += `<div><div class="sechead">Jak je appka zařadila</div><div class="chips">${top.map(([c, k]) => `<span class="fchip" style="background:var(--fill2);color:var(--label);padding:5px 12px">${esc(CAT[c].name)} <b style="margin-left:4px">${k}</b></span>`).join('')}</div>
           ${s.unsorted ? `<div class="secfoot">${s.unsorted} pohybů zůstane v „Nezařazeno“. Zařadíš je po importu jedním klepnutím a appka si to zapamatuje.</div>` : ''}</div>`;
-        const sample = [...p.b.items].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
-        body += `<div class="preview"><div class="sechead">Ukázka</div><div class="group">${sample.map(it => {
+        const sample = [...p.b.items].sort((a, b) => b.date.localeCompare(a.date)).slice(0, IMP.source === 'ocr' ? 40 : 6);
+        body += `<div class="preview"><div class="sechead">${IMP.source === 'ocr' ? 'Nalezené pohyby' : 'Ukázka'}</div><div class="group">${sample.map(it => {
           const c = CAT[it.cat];
           return `<div class="row">${V.av(it.cat, 'sm')}<div class="main"><div class="t">${esc(An.baseNote(it.note) || c.name)}</div><div class="s">${esc(c.name)} · ${fmtShort(it.date)}</div></div><div class="end ${c.kind === 'in' ? 'in' : ''}">${c.kind === 'in' ? '+' : MINUS}${numStr(it.amount)}${NBSP}Kč</div></div>`;
         }).join('')}</div></div>`;
@@ -363,7 +436,7 @@
         body += `<div class="callout">Nic nového k importu. Všechno z tohoto souboru už v appce je.</div>`;
       }
     }
-    body += `<details class="ppd"${IMP.mapOpen ? ' open' : ''} id="impMapBox"><summary style="padding:0 4px 8px"><span class="sechead" style="margin:0">Sloupce v souboru</span><span class="cnt"></span></summary><div class="group">${mapRows}</div>
+    if (!IMP.recs) body += `<details class="ppd"${IMP.mapOpen ? ' open' : ''} id="impMapBox"><summary style="padding:0 4px 8px"><span class="sechead" style="margin:0">Sloupce v souboru</span><span class="cnt"></span></summary><div class="group">${mapRows}</div>
       <div class="secfoot">Appka sloupce poznala podle názvů v hlavičce. Kdyby něco nesedělo, oprav to tady.</div></details>`;
     dlg.innerHTML = K.sheetHTML({ title: 'Import výpisu', left: 'Zrušit', right: n ? `Importovat ${n}` : 'Importovat', body });
     const ok = dlg.querySelector('[data-act="ok"]');
@@ -387,7 +460,7 @@
       renderImport();
     }));
     const rv = $('#impRevive', dlg);
-    if (rv) rv.addEventListener('change', () => { IMP.revive = rv.checked; IMP.mapOpen = $('#impMapBox', dlg).open; renderImport(); });
+    if (rv) rv.addEventListener('change', () => { IMP.revive = rv.checked; const mb = $('#impMapBox', dlg); IMP.mapOpen = mb ? mb.open : false; renderImport(); });
   }
 
   /* ========== obchodník ========== */
@@ -632,7 +705,7 @@
   BG.ui.closeData = () => close(dlgs.data);
   BG.ui.dataMsg = t => { const m = $('#dataMsg'); if (m) m.textContent = t; };
   BG.ui.sync = () => {};
-  window.BGDlg = { openCell, openEntry, openMerch, openTriage, openRules, openLimit, suggestLimits, openData, pickFile, handleFile };
+  window.BGDlg = { pickPhoto, openCell, openEntry, openMerch, openTriage, openRules, openLimit, suggestLimits, openData, pickFile, handleFile };
 
   BG.boot();
 })();

@@ -27,7 +27,13 @@ Co je v pořádku, jde skrýt (synchronizuje se). Ukázková data jsou označen�
 
 31 kategorií ve 8 skupinách (hospoda, kavárny, rozvoz jídla, fitko, doprava, taxi, tabák…), ne jedna „zábava“.
 
-**Import výpisu** (ikona Data → Importovat výpis): CSV z banky (UTF-8 i Windows-1250, `;` `,` tabulátor).
+**PDF výpis a fotky:** PDF výpis Komerční banky appka přečte přesně (kontroluje počet transakcí proti součtu na konci výpisu,
+platby v cizí měně přepočte podle skutečného zaúčtování v Kč). U jiných bank hledá v PDF řádky s datem a částkou.
+Fotka nebo snímek obrazovky výpisu se přečte přes OCR (Tesseract, čeština) a ukáže se náhled. Fotka účtenky rovnou
+vyplní nový pohyb: částku „celkem“, datum a obchod. Všechno běží v prohlížeči, knihovny jsou ve složce `vendor/`
+(pdf.js, tesseract.js) a načtou se až při prvním použití.
+
+**Import výpisu** (ikona Data → Nahrát): CSV z banky (UTF-8 i Windows-1250, `;` `,` tabulátor).
 Sloupce se poznají podle názvů v hlavičce, jinak je přiřadíš ručně. Platby se zařadí podle obchodníka,
 duplicity (stejný den, částka, obchodník) se přeskočí, platby v cizí měně se vynechají. Čísla účtů, VS, KS
 a SS se do poznámek nepřebírají. Před importem je náhled. Import se dá vrátit tlačítkem Vrátit.
@@ -125,6 +131,8 @@ Při přidání kategorie nebo změně formátu zvyš `SCHEMA` v `app.js`, ať s
 | `cats.js` | kategorie, skupiny, barvy, ikony |
 | `analytics.js` | součty, průměry, tempo měsíce, pravidelné platby, kalendář |
 | `importer.js` | čtení CSV z banky, detekce sloupců, odstranění duplicit |
+| `extract.js` | čtení PDF výpisů (KB přesně, ostatní podle data a částky) a fotek přes OCR |
+| `vendor/` | pdf.js a tesseract.js s českým modelem (licence vedle souborů) |
 | `app.js` | data, mutace, export, přihlášení a synchronizace s Diskem |
 | `kit.js` | ikony, grafy (SVG), společné prvky oken |
 | `views.js` | záložky Přehled, Pohyby, Kalendář, Trendy, Plán |
@@ -136,7 +144,6 @@ Nasazení je přes GitHub Pages z větve `main`, změna je hotová po pushi.
 
 ## Co by šlo přidat
 
-- Import PDF výpisu přímo v appce (teď jen CSV).
 - Vlastní kategorie.
 - Rozpočet po měsících (ne jen jeden limit na kategorii).
 - Kurzy cizích měn (teď se platby v cizí měně při importu vynechají).

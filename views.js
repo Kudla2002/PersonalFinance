@@ -162,7 +162,7 @@
   function emptyState() {
     return head('Finance', 'Příjmy, výdaje a spoření po měsících.')
       + `<div class="panel" style="max-width:560px"><h2>Zatím tu nic není</h2>
-      <p class="cap" style="margin-top:6px">Nahraj výpis z banky (CSV) nebo zálohu (JSON), klidně jen přetažením souboru do okna. Appka pohyby sama roztřídí do kategorií jako hospoda, kavárna, gym nebo rozvoz. Zbytek zařadíš jedním klepnutím a appka si to pamatuje. Data zůstávají jen v tomto prohlížeči, volitelně i na tvém Google Disku.</p>
+      <p class="cap" style="margin-top:6px">Nahraj výpis z banky (PDF nebo CSV), fotku účtenky či výpisu, nebo zálohu (JSON). Klidně jen přetažením souboru do okna. Appka pohyby sama roztřídí do kategorií jako hospoda, kavárna, gym nebo rozvoz. Zbytek zařadíš jedním klepnutím a appka si to pamatuje. Data zůstávají jen v tomto prohlížeči, volitelně i na tvém Google Disku.</p>
       <div class="chips">
         <button type="button" class="chipbtn on" data-act="pick-file">Nahrát výpis nebo zálohu</button>
         <button type="button" class="chipbtn" data-act="add">Přidat pohyb ručně</button>

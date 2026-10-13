@@ -51,7 +51,8 @@
 <dialog id="limitDlg" aria-label="Limit"></dialog>
 <dialog id="cellDlg" aria-label="Detail kategorie"></dialog>
 
-<input type="file" id="fileCsv" class="kfile" accept=".csv,.tsv,.txt,.json,text/csv,text/plain,application/json" tabindex="-1" aria-hidden="true">
+<input type="file" id="fileCsv" class="kfile" accept=".csv,.tsv,.txt,.json,.pdf,text/csv,text/plain,application/json,application/pdf,image/*" tabindex="-1" aria-hidden="true">
+<input type="file" id="filePhoto" class="kfile" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
 <input type="file" id="fileJson" class="kfile" accept=".json,application/json" tabindex="-1" aria-hidden="true">
 
 <div id="toast" role="status" hidden></div>
@@ -63,6 +64,7 @@
 <script src="cats.js"></script>
 <script src="analytics.js"></script>
 <script src="importer.js"></script>
+<script src="extract.js"></script>
 <script src="app.js"></script>
 <script src="kit.js"></script>
 <script src="views.js"></script>

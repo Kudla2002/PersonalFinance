@@ -1,6 +1,6 @@
 /* Offline režim. Soubory appky: nejdřív síť (změny jsou hned vidět), při výpadku cache.
    Verzi cache zvyš při změně seznamu SHELL. Cizí adresy (Google přihlášení, Disk) se nikdy neukládají. */
-const CACHE = 'finance-v6';
+const CACHE = 'finance-v7';
 const SHELL = [
   './',
   'index.html',
@@ -9,6 +9,7 @@ const SHELL = [
   'cats.js',
   'analytics.js',
   'importer.js',
+  'extract.js',
   'app.js',
   'kit.js',
   'views.js',

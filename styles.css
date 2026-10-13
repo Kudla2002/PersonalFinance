@@ -465,7 +465,7 @@ button.st:hover b { text-decoration: underline; text-underline-offset: 3px; }
 .triage .chiprow { padding-left: 64px; }
 @media (max-width: 520px) { .triage .chiprow { padding-left: 16px; } }
 
-body.dropping::after { content: "Pusť soubor: výpis (CSV) nebo zálohu (JSON)"; position: fixed; inset: 12px; z-index: 50; display: flex; align-items: center; justify-content: center;
+body.dropping::after { content: "Pusť soubor: výpis (PDF, CSV), fotku nebo zálohu"; position: fixed; inset: 12px; z-index: 50; display: flex; align-items: center; justify-content: center;
   border: 3px dashed var(--tint); border-radius: 22px; background: color-mix(in srgb, var(--bg) 88%, transparent); color: var(--tint); font-size: 20px; font-weight: 600; pointer-events: none; }
 .mob-only { display: none; }
 @media (max-width: 860px) { .hero-pace { display: none; } .mob-only { display: block; } }
@@ -480,3 +480,13 @@ table.heat .hcat:hover, table.heat th button:hover, table.heat td.tot button:hov
 table.heat th button { color: inherit; font-weight: inherit; text-transform: inherit; letter-spacing: inherit; text-align: inherit; }
 table.heat td.hm, table.heat td.tot, table.heat td:first-child { padding: 0; }
 table.heat td.hm button, table.heat td.tot button, table.heat .hcat { display: block; padding: 9px 12px; min-height: 36px; }
+
+/* čtení PDF a fotek */
+.busy { text-align: center; padding: 28px 20px; display: grid; gap: 10px; justify-items: center; }
+.busy p { margin: 0; }
+.spin { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--fill); border-top-color: var(--tint); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.pbar { width: 100%; max-width: 320px; height: 6px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.pbar i { display: block; height: 100%; background: var(--tint); transition: width .2s; }
+.scanbtn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px; border-radius: var(--r); background: var(--tint-soft); color: var(--tint); font-weight: 600; }
+.scanbtn .ic { width: 20px; height: 20px; }

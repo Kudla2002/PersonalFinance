@@ -4,6 +4,7 @@
 
   /* Ikony 24×24, čárové. Jména odpovídají záložkám, kategoriím a ovládacím prvkům. */
   const P = {
+    camera: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
     // záložky a ovládání
     home: '<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15 3.4A9 9 0 0 1 20.6 9H15z"/>',
     list: '<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
